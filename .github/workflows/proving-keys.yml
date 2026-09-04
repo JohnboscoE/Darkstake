@@ -68,42 +68,37 @@ jobs:
           # the contract's pragma and the UI's compact-runtime expect.
           # 0.34.x targets ledger 9, which is not deployed yet.
           #
-          # Three runs died here with a bare exit 127 and no usable signal, so
-          # this step now collects its own diagnosis and re-emits it as an
-          # ::error:: annotation -- readable through the API without log access.
+          # This step kept dying with a bare exit 127. CI logs need an
+          # authenticated token to read, so it probes everything up front and
+          # emits the result as an annotation UNCONDITIONALLY -- an earlier
+          # attempt only annotated on one branch and the useful output went to
+          # the unreadable log. Note that 127 is also what a binary that cannot
+          # load a shared library exits with, hence the ldd probe.
           set +e
+          compact update 0.31 > update.log 2>&1
+          UPDATE_RC=$?
+          COMPACTC="$(command -v compactc || find "$HOME/.compact" -maxdepth 6 -type f -name 'compactc*' -perm -u+x 2>/dev/null | head -1)"
           {
-            echo "PATH=$PATH"
-            echo "--- command -v compact ---";  command -v compact;  echo "rc=$?"
-            echo "--- compact --version ---";   compact --version 2>&1; echo "rc=$?"
-            echo "--- compact list ---";        compact list 2>&1 | head -20; echo "rc=$?"
-            echo "--- compact update 0.31 ---"; compact update 0.31 2>&1 | tail -20; echo "rc=$?"
-            echo "--- ~/.compact tree ---";     find "$HOME/.compact" -maxdepth 4 2>&1 | head -40
-            echo "--- command -v compactc ---"; command -v compactc; echo "rc=$?"
-            echo "--- compactc --version ---";  compactc --version 2>&1; echo "rc=$?"
+            echo "update_rc=$UPDATE_RC"
+            echo "update_tail: $(tail -3 update.log | tr '
+' ' ')"
+            echo "compactc=$COMPACTC"
+            if [ -n "$COMPACTC" ]; then
+              echo "version: $("$COMPACTC" --version 2>&1 | head -2) rc=$?"
+              echo "langver: $("$COMPACTC" --language-version 2>&1 | head -2) rc=$?"
+              echo "ldd: $(ldd "$COMPACTC" 2>&1 | grep -i 'not found' | head -5)"
+            fi
+            echo "tree: $(find "$HOME/.compact" -maxdepth 3 2>/dev/null | head -25 | tr '
+' ' ')"
           } > diag.txt 2>&1
-          sed 's/^/  /' diag.txt
+          cat diag.txt
+          echo "::error::DIAG $(paste -sd'|' diag.txt | cut -c1-2800)"
           set -e
 
-          COMPACTC="$(command -v compactc || true)"
-          if [ -z "$COMPACTC" ]; then
-            COMPACTC="$(find "$HOME/.compact" -maxdepth 6 -type f -name 'compactc*' -perm -u+x 2>/dev/null | head -1)"
-          fi
-          if [ -z "$COMPACTC" ]; then
-            # Fold the diagnosis into a single annotation line.
-            echo "::error::compactc missing. $(paste -sd'|' diag.txt | cut -c1-2500)"
-            exit 1
-          fi
-          echo "compactc at $COMPACTC"
+          test -n "$COMPACTC" || exit 1
           dirname "$COMPACTC" >> "$GITHUB_PATH"
-
-          "$COMPACTC" --version
           LANG_VERSION="$("$COMPACTC" --language-version)"
-          echo "language version: $LANG_VERSION"
-          if [ "$LANG_VERSION" != "0.23.0" ]; then
-            echo "::error::language version is $LANG_VERSION, expected 0.23.0"
-            exit 1
-          fi
+          test "$LANG_VERSION" = "0.23.0"
 
       - name: Compile WITH proving keys
         working-directory: contract
