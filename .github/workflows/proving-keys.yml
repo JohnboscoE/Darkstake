@@ -45,7 +45,21 @@ jobs:
           curl -sSL -o compact-installer.sh \
             https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.2/compact-installer.sh
           sh compact-installer.sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          # Don't assume where the installer put things -- the previous run of
+          # this job died with exit 127 (compact: command not found) because
+          # $HOME/.local/bin was wrong for the runner. Locate the binary and
+          # add its real directory, failing loudly with a listing if it is
+          # genuinely absent.
+          echo "--- after install ---"
+          ls -la "$HOME/.local/bin" "$HOME/.compact" "$HOME/.compact/bin" 2>&1 || true
+          COMPACT_BIN="$(find "$HOME" -maxdepth 5 -type f -name compact -perm -u+x 2>/dev/null | head -1)"
+          if [ -z "$COMPACT_BIN" ]; then
+            echo "::error::compact binary not found anywhere under $HOME after install"
+            exit 1
+          fi
+          echo "found compact at $COMPACT_BIN"
+          dirname "$COMPACT_BIN" >> "$GITHUB_PATH"
           echo "$HOME/.compact/bin" >> "$GITHUB_PATH"
 
       - name: Pin toolchain 0.31.x
