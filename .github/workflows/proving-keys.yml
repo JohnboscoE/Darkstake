@@ -67,9 +67,30 @@ jobs:
           # 0.31.1 == language 0.23 + runtime 0.16.0 + ledger 8, which is what
           # the contract's pragma and the UI's compact-runtime expect.
           # 0.34.x targets ledger 9, which is not deployed yet.
+          echo "PATH=$PATH"
+          command -v compact || { echo "::error::compact not on PATH"; exit 1; }
           compact update 0.31
-          compactc --version
-          test "$(compactc --language-version)" = "0.23.0"
+
+          # `compact update` installs compactc into a versioned directory whose
+          # location has moved between releases, so don't assume it landed on
+          # PATH -- the previous run reached here and still exited 127. Find it,
+          # and dump what does exist if it is missing.
+          COMPACTC="$(command -v compactc || true)"
+          if [ -z "$COMPACTC" ]; then
+            COMPACTC="$(find "$HOME/.compact" -maxdepth 6 -type f -name compactc -perm -u+x 2>/dev/null | head -1)"
+          fi
+          if [ -z "$COMPACTC" ]; then
+            echo "::error::compactc not found after 'compact update 0.31'"
+            find "$HOME/.compact" -maxdepth 6 -type f 2>&1 | head -50
+            exit 1
+          fi
+          echo "compactc at $COMPACTC"
+          dirname "$COMPACTC" >> "$GITHUB_PATH"
+
+          "$COMPACTC" --version
+          LANG_VERSION="$("$COMPACTC" --language-version)"
+          echo "language version: $LANG_VERSION"
+          test "$LANG_VERSION" = "0.23.0"
 
       - name: Compile WITH proving keys
         working-directory: contract
