@@ -1,0 +1,16 @@
+{
+  "name": "prediction-market-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compact": "compact compile --skip-zk prediction-market.compact managed/prediction-market",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.0"
+  }
+}

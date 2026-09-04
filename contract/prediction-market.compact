@@ -1,0 +1,191 @@
+// Darkstake -- shielded binary prediction market.
+//
+// Public:  that a market exists, which side each position took, how many
+//          positions per side, the phase, the resolver's commitment.
+// Private: the stake amount and the staker's identity, until reveal.
+//
+// The whole privacy contribution is one inversion of the leaderboard pattern:
+// the leaderboard discloses its score, we store only a *commitment* to the
+// stake and keep the amount off-chain until the reveal phase. Any `disclose()`
+// of a raw stake before then is the bug this contract exists to avoid.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum Side {
+  YES,
+  NO
+}
+
+export enum Phase {
+  OPEN,      // taking positions; amounts sealed
+  REVEAL,    // closed to new positions; owners reveal their stakes
+  RESOLVED   // outcome recorded
+}
+
+struct Position {
+  side: Side,
+  stakeCommitment: Bytes<32>,  // hash(stake, salt) -- amount stays private
+  ownerHash: Bytes<32>,        // hash(secretKey)   -- identity stays private
+  revealed: Boolean,
+  revealedStake: Uint<64>,     // 0 until revealed
+  claimed: Boolean             // winner has acknowledged their entitlement
+}
+
+export ledger positions: Map<Uint<64>, Position>;
+export ledger nextId: Counter;
+export ledger phase: Phase;
+export ledger winningSide: Maybe<Side>;
+export ledger resolver: Bytes<32>;
+
+// Public tallies. Counts only -- never sums of stakes, which would leak the
+// aggregate we are trying to hide while the market is open.
+export ledger yesCount: Counter;
+export ledger noCount: Counter;
+
+// Settlement terms. These accumulate only during REVEAL, when every stake fed
+// into them is already public, so they leak nothing that was not disclosed by
+// the reveal itself. Uint<128> because a sum of Uint<64> stakes does not fit in
+// a Uint<64>.
+export ledger totalYesStake: Uint<128>;
+export ledger totalNoStake: Uint<128>;
+
+// Set at resolve. Entitlement for a winning position is
+//     revealedStake * pool / winningStakeTotal
+// Compact has no division operator, so the contract records the terms and the
+// quotient is computed off-chain -- by anyone, from public state. Recording the
+// terms rather than the answer is what makes it verifiable.
+export ledger pool: Uint<128>;
+export ledger winningStakeTotal: Uint<128>;
+
+witness localSecretKey(): Bytes<32>;
+witness stakeValue(): Uint<64>;
+witness stakeSalt(): Bytes<32>;
+
+// The deployer is the resolver. One contract instance == one market.
+constructor() {
+  phase = Phase.OPEN;
+  winningSide = none<Side>();
+  resolver = disclose(ownerCommitment(localSecretKey()));
+}
+
+export circuit ownerCommitment(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pm:owner:"), sk]);
+}
+
+export circuit stakeCommit(stake: Uint<64>, salt: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>(
+    [pad(32, "pm:stake:"), stake as Field as Bytes<32>, salt]);
+}
+
+// COMMIT: the side is public, the amount and the staker are not.
+export circuit commitPosition(side: Side): [] {
+  assert(phase == Phase.OPEN, "market not open");
+
+  // Constrain the private stake without disclosing it. A zero stake would make
+  // `winningStakeTotal` divide-by-zero at settlement, and asserting on a witness
+  // costs nothing in privacy -- the assert reveals only that it held.
+  const stake = stakeValue();
+  assert(stake > 0, "stake must be positive");
+
+  const commitment = stakeCommit(stake, stakeSalt());
+  const ownerHash = ownerCommitment(localSecretKey());
+
+  nextId.increment(1);
+  const id = disclose(nextId.read() as Uint<64>);
+
+  positions.insert(id, Position {
+    side: disclose(side),
+    stakeCommitment: disclose(commitment),
+    ownerHash: disclose(ownerHash),
+    revealed: false,
+    revealedStake: 0,
+    claimed: false
+  });
+
+  if (disclose(side) == Side.YES) {
+    yesCount.increment(1);
+  } else {
+    noCount.increment(1);
+  }
+}
+
+// Resolver closes the book. Until this happens nobody may reveal, because
+// revealing while the market is still open would leak the very number the
+// commit phase exists to hide.
+export circuit closeMarket(): [] {
+  assert(phase == Phase.OPEN, "market not open");
+  assert(ownerCommitment(localSecretKey()) == resolver, "not the resolver");
+  phase = Phase.REVEAL;
+}
+
+// REVEAL: prove the amount matches the commitment posted before the outcome
+// was known, and prove ownership. Only now does the amount become public.
+export circuit revealPosition(id: Uint<64>, stake: Uint<64>, salt: Bytes<32>): [] {
+  assert(phase == Phase.REVEAL, "not in reveal phase");
+  assert(positions.member(disclose(id)), "no such position");
+
+  const p = positions.lookup(disclose(id));
+  assert(!p.revealed, "already revealed");
+  assert(ownerCommitment(localSecretKey()) == p.ownerHash, "not owner");
+  assert(stakeCommit(stake, salt) == p.stakeCommitment, "stake != commitment");
+
+  positions.insert(disclose(id), Position {
+    side: p.side,
+    stakeCommitment: p.stakeCommitment,
+    ownerHash: p.ownerHash,
+    revealed: true,
+    revealedStake: disclose(stake),
+    claimed: false
+  });
+
+  // Accumulate the settlement terms. Safe to publish: this stake just became
+  // public by the reveal above, so the running sum discloses nothing new.
+  if (p.side == Side.YES) {
+    totalYesStake = totalYesStake + disclose(stake) as Uint<128>;
+  } else {
+    totalNoStake = totalNoStake + disclose(stake) as Uint<128>;
+  }
+}
+
+// Record the outcome and freeze the settlement terms.
+// v1: single trusted resolver, named and gated.
+export circuit resolve(outcome: Side): [] {
+  assert(phase == Phase.REVEAL, "not in reveal phase");
+  assert(ownerCommitment(localSecretKey()) == resolver, "not the resolver");
+
+  winningSide = disclose(some<Side>(outcome));
+
+  // Only revealed stakes fund the pool. A position that never revealed
+  // forfeits: it contributes nothing and can claim nothing.
+  pool = totalYesStake + totalNoStake as Uint<128>;
+  winningStakeTotal = disclose(outcome) == Side.YES ? totalYesStake : totalNoStake;
+
+  phase = Phase.RESOLVED;
+}
+
+// Claim an entitlement. This records WHO is entitled and, together with `pool`
+// and `winningStakeTotal`, on what terms -- it does not move value. Payout is
+//     revealedStake * pool / winningStakeTotal
+// computed off-chain from public state.
+export circuit claimEntitlement(id: Uint<64>): [] {
+  assert(phase == Phase.RESOLVED, "market not resolved");
+  assert(positions.member(disclose(id)), "no such position");
+
+  const p = positions.lookup(disclose(id));
+  assert(p.revealed, "position was never revealed");
+  assert(!p.claimed, "already claimed");
+  assert(ownerCommitment(localSecretKey()) == p.ownerHash, "not owner");
+  assert(winningSide.is_some, "no outcome recorded");
+  assert(p.side == winningSide.value, "position did not win");
+
+  positions.insert(disclose(id), Position {
+    side: p.side,
+    stakeCommitment: p.stakeCommitment,
+    ownerHash: p.ownerHash,
+    revealed: p.revealed,
+    revealedStake: p.revealedStake,
+    claimed: true
+  });
+}

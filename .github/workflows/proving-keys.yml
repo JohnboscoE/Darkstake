@@ -1,0 +1,83 @@
+name: Generate proving keys
+
+# The dev machine is a Sandy Bridge i7-2640M (2011), which lacks the bmi2/adx
+# instructions `zkir` needs -- it dies with SIGILL on every input, so proving
+# keys cannot be generated locally. GitHub's runners are modern, so this
+# workflow does the one build step that hardware cannot.
+#
+# Run it, download the `managed` artifact, and unzip into
+# `prediction-market/contract/managed/`. That directory then contains the
+# `keys/*.prover` and `keys/*.verifier` files that a real deployment needs.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'contract/**.compact'
+      - '.github/workflows/proving-keys.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the runner has the instructions zkir needs
+        run: |
+          echo "model: $(grep -m1 'model name' /proc/cpuinfo)"
+          for f in bmi2 adx avx2; do
+            if grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\n' | grep -qx "$f"; then
+              echo "  $f present"
+            else
+              echo "::error::runner CPU lacks $f -- zkir will SIGILL here too"
+              exit 1
+            fi
+          done
+
+      - name: Install the Compact toolchain
+        run: |
+          sudo apt-get update && sudo apt-get install -y unzip
+          curl -sSL -o compact-installer.sh \
+            https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.2/compact-installer.sh
+          sh compact-installer.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.compact/bin" >> "$GITHUB_PATH"
+
+      - name: Pin toolchain 0.31.x
+        run: |
+          # 0.31.1 == language 0.23 + runtime 0.16.0 + ledger 8, which is what
+          # the contract's pragma and the UI's compact-runtime expect.
+          # 0.34.x targets ledger 9, which is not deployed yet.
+          compact update 0.31
+          compactc --version
+          test "$(compactc --language-version)" = "0.23.0"
+
+      - name: Compile WITH proving keys
+        working-directory: contract
+        run: |
+          # No --skip-zk here. This is the whole point of the job, and it is
+          # the slow step -- key generation dominates the runtime.
+          compact compile prediction-market.compact managed/prediction-market
+
+      - name: Verify the keys actually exist
+        working-directory: contract
+        run: |
+          ls -la managed/prediction-market/keys/
+          for c in commitPosition closeMarket revealPosition resolve claimEntitlement; do
+            test -s "managed/prediction-market/keys/$c.prover"   || { echo "::error::missing $c.prover"; exit 1; }
+            test -s "managed/prediction-market/keys/$c.verifier" || { echo "::error::missing $c.verifier"; exit 1; }
+          done
+          echo "all five circuits have prover and verifier keys"
+
+      - name: Run the contract test suite against the freshly built artifacts
+        working-directory: contract
+        run: |
+          npm install --no-audit --no-fund
+          node probe.mjs
+          npx vitest run
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: managed
+          path: contract/managed/
+          retention-days: 30

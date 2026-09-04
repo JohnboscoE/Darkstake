@@ -1,0 +1,39 @@
+{
+  "name": "darkstake-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "^0.16.0",
+    "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-slot": "^1.2.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.3.1",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^24.5.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^5.0.0"
+  }
+}
