@@ -67,21 +67,31 @@ jobs:
           # 0.31.1 == language 0.23 + runtime 0.16.0 + ledger 8, which is what
           # the contract's pragma and the UI's compact-runtime expect.
           # 0.34.x targets ledger 9, which is not deployed yet.
-          echo "PATH=$PATH"
-          command -v compact || { echo "::error::compact not on PATH"; exit 1; }
-          compact update 0.31
+          #
+          # Three runs died here with a bare exit 127 and no usable signal, so
+          # this step now collects its own diagnosis and re-emits it as an
+          # ::error:: annotation -- readable through the API without log access.
+          set +e
+          {
+            echo "PATH=$PATH"
+            echo "--- command -v compact ---";  command -v compact;  echo "rc=$?"
+            echo "--- compact --version ---";   compact --version 2>&1; echo "rc=$?"
+            echo "--- compact list ---";        compact list 2>&1 | head -20; echo "rc=$?"
+            echo "--- compact update 0.31 ---"; compact update 0.31 2>&1 | tail -20; echo "rc=$?"
+            echo "--- ~/.compact tree ---";     find "$HOME/.compact" -maxdepth 4 2>&1 | head -40
+            echo "--- command -v compactc ---"; command -v compactc; echo "rc=$?"
+            echo "--- compactc --version ---";  compactc --version 2>&1; echo "rc=$?"
+          } > diag.txt 2>&1
+          sed 's/^/  /' diag.txt
+          set -e
 
-          # `compact update` installs compactc into a versioned directory whose
-          # location has moved between releases, so don't assume it landed on
-          # PATH -- the previous run reached here and still exited 127. Find it,
-          # and dump what does exist if it is missing.
           COMPACTC="$(command -v compactc || true)"
           if [ -z "$COMPACTC" ]; then
-            COMPACTC="$(find "$HOME/.compact" -maxdepth 6 -type f -name compactc -perm -u+x 2>/dev/null | head -1)"
+            COMPACTC="$(find "$HOME/.compact" -maxdepth 6 -type f -name 'compactc*' -perm -u+x 2>/dev/null | head -1)"
           fi
           if [ -z "$COMPACTC" ]; then
-            echo "::error::compactc not found after 'compact update 0.31'"
-            find "$HOME/.compact" -maxdepth 6 -type f 2>&1 | head -50
+            # Fold the diagnosis into a single annotation line.
+            echo "::error::compactc missing. $(paste -sd'|' diag.txt | cut -c1-2500)"
             exit 1
           fi
           echo "compactc at $COMPACTC"
@@ -90,7 +100,10 @@ jobs:
           "$COMPACTC" --version
           LANG_VERSION="$("$COMPACTC" --language-version)"
           echo "language version: $LANG_VERSION"
-          test "$LANG_VERSION" = "0.23.0"
+          if [ "$LANG_VERSION" != "0.23.0" ]; then
+            echo "::error::language version is $LANG_VERSION, expected 0.23.0"
+            exit 1
+          fi
 
       - name: Compile WITH proving keys
         working-directory: contract
