@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // testcontainers (pulled in by testkit-js) implicitly references @types/ssh2,
+    // which is not installed. Only our own ambient types are needed here.
+    "types": ["node"],
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowJs": true
+  },
+  "include": ["src/**/*.ts", "../contract/src/**/*.ts"]
+}

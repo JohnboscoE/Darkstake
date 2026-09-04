@@ -1,0 +1,16 @@
+{
+  "name": "darkstake-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate-wallet.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.2",
+    "@midnight-ntwrk/wallet-sdk-hd": "3.0.3",
+    "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "3.1.0",
+    "effect": "^3.22.1"
+  }
+}

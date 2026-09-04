@@ -11,3 +11,8 @@ managed/
 # Proving keys copied into the UI for FetchZkConfigProvider to serve.
 ui/public/keys/
 ui/public/zkir/
+
+# Generated wallets. The seed in here IS the wallet -- never commit it.
+wallet/.wallets/
+cli/.deployments/
+cli/logs/

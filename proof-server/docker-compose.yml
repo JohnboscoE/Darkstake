@@ -13,7 +13,7 @@ services:
   proof-server:
     image: midnightntwrk/proof-server:8.0.3
     container_name: darkstake-proof-server
-    command: ["midnight-proof-server", "--network", "preprod"]
+    command: ["midnight-proof-server", "--network", "preview"]
     ports:
       - "6300:6300"
     restart: unless-stopped
