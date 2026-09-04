@@ -15,6 +15,11 @@ on:
     paths:
       - 'contract/**.compact'
       - '.github/workflows/proving-keys.yml'
+      # The job also runs probe.mjs and the vitest suite against the freshly
+      # built artifacts, so a change to either should re-verify them.
+      - 'contract/src/**'
+      - 'contract/probe.mjs'
+      - 'contract/package.json'
 
 jobs:
   compile:
