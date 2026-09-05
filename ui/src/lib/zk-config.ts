@@ -60,6 +60,14 @@ export const createZkConfigProvider = (
  * state of this demo, not an error. It throws only on a value that is set but
  * unusable, because a typo'd URL should not look identical to no URL at all.
  */
+/** Hosts the browser treats as secure even over plain http. */
+const isLoopback = (hostname: string): boolean =>
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  hostname === '[::1]' ||
+  hostname === '::1' ||
+  hostname.endsWith('.localhost');
+
 export const getProofServerUrl = (): string | null => {
   const raw = import.meta.env.VITE_PROOF_SERVER_URL;
   if (typeof raw !== 'string' || raw.trim() === '') return null;
@@ -77,13 +85,21 @@ export const getProofServerUrl = (): string | null => {
   // A page served over https cannot call a plaintext http proof server --
   // browsers block it as mixed content, with a console error that does not
   // obviously point here. Say so at config time instead.
+  //
+  // Loopback is the exception, and it is the important one: browsers treat
+  // http://localhost and http://127.0.0.1 as potentially trustworthy origins,
+  // so an https page CAN reach a proof server on localhost. That is exactly the
+  // setup this project expects -- a hosted site talking to the proof server on
+  // the visitor's own machine -- and rejecting it here would break the normal
+  // case in the name of a rule that does not apply to it.
   if (
     typeof window !== 'undefined' &&
     window.location.protocol === 'https:' &&
-    parsed.protocol === 'http:'
+    parsed.protocol === 'http:' &&
+    !isLoopback(parsed.hostname)
   ) {
     throw new Error(
-      `VITE_PROOF_SERVER_URL is http:// but this page is https:// -- the browser will block it as mixed content. Use an https tunnel (see .devcontainer/tunnel.sh).`,
+      `VITE_PROOF_SERVER_URL is http:// on a non-loopback host but this page is https:// -- the browser will block it as mixed content. Use an https tunnel (see .devcontainer/tunnel.sh), or point it at localhost.`,
     );
   }
   return value.replace(/\/$/, '');

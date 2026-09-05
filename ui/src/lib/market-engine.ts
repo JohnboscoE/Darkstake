@@ -48,7 +48,13 @@ export interface Identity {
 export interface LocalNote {
   positionId: bigint;
   stake: bigint;
+  /** Blinds the stake commitment: hides how much. */
   salt: Uint8Array;
+  /**
+   * Blinds the owner tag: hides that this position and your others are one
+   * person's. Fresh per position -- reusing it re-links them.
+   */
+  ownerSalt: Uint8Array;
 }
 
 export interface LogEntry {
@@ -63,6 +69,7 @@ type PrivateState = {
   readonly secretKey: Uint8Array;
   readonly stake: bigint;
   readonly salt: Uint8Array;
+  readonly ownerSalt: Uint8Array;
 };
 
 const key = (fill: number) => new Uint8Array(32).fill(fill);
@@ -136,12 +143,13 @@ export class MarketEngine {
       localSecretKey: ({ privateState }) => [privateState, privateState.secretKey],
       stakeValue: ({ privateState }) => [privateState, privateState.stake],
       stakeSalt: ({ privateState }) => [privateState, privateState.salt],
+      ownerSalt: ({ privateState }) => [privateState, privateState.ownerSalt],
     });
 
     const deployer = IDENTITIES[0];
     const init = this.contract.initialState(
       createConstructorContext(
-        { secretKey: deployer.secretKey, stake: 1n, salt: randomSalt() },
+        { secretKey: deployer.secretKey, stake: 1n, salt: randomSalt(), ownerSalt: randomSalt() },
         '0'.repeat(64),
       ),
     );
@@ -221,12 +229,16 @@ export class MarketEngine {
 
   commit(identity: Identity, side: Side, stake: bigint) {
     const salt = randomSalt();
+    // Fresh for every position, which is what makes two positions by the same
+    // identity unlinkable on the ledger. Watch the owner column: commit twice
+    // as the Whale and the two rows share nothing.
+    const ownerSalt = randomSalt();
     const before = this.ledger.nextId;
 
     const res = this.run(
       identity,
       `commitPosition(${side === Side.YES ? 'YES' : 'NO'})`,
-      { secretKey: identity.secretKey, stake, salt },
+      { secretKey: identity.secretKey, stake, salt, ownerSalt },
       (ctx) => this.contract.impureCircuits.commitPosition(ctx, side).context,
       'commitment stored; amount stayed local',
     );
@@ -236,7 +248,7 @@ export class MarketEngine {
       if (positionId !== before) {
         this.owners.set(String(positionId), identity.id);
         const list = this.notes.get(identity.id) ?? [];
-        list.push({ positionId, stake, salt });
+        list.push({ positionId, stake, salt, ownerSalt });
         this.notes.set(identity.id, list);
       }
     }
@@ -247,7 +259,7 @@ export class MarketEngine {
     return this.run(
       identity,
       'closeMarket()',
-      { secretKey: identity.secretKey, stake: 1n, salt: randomSalt() },
+      { secretKey: identity.secretKey, stake: 1n, salt: randomSalt(), ownerSalt: randomSalt() },
       (ctx) => this.contract.impureCircuits.closeMarket(ctx).context,
       'book closed; phase REVEAL',
     );
@@ -262,11 +274,15 @@ export class MarketEngine {
     const note = this.notesFor(identity.id).find((n) => n.positionId === positionId);
     const stake = override?.stake ?? note?.stake ?? 0n;
     const salt = override?.salt ?? note?.salt ?? randomSalt();
+    // Not overridable: this proves the position is yours. Someone with no note
+    // gets fresh randomness and is rejected as "not owner", which is the same
+    // answer a genuine impostor gets -- so the failure reveals nothing either.
+    const ownerSalt = note?.ownerSalt ?? randomSalt();
 
     return this.run(
       identity,
       `revealPosition(#${positionId}, ${stake})`,
-      { secretKey: identity.secretKey, stake, salt },
+      { secretKey: identity.secretKey, stake, salt, ownerSalt },
       (ctx) => this.contract.impureCircuits.revealPosition(ctx, positionId, stake, salt).context,
       `stake ${stake} proven against the commitment`,
     );
@@ -276,17 +292,25 @@ export class MarketEngine {
     return this.run(
       identity,
       `resolve(${outcome === Side.YES ? 'YES' : 'NO'})`,
-      { secretKey: identity.secretKey, stake: 1n, salt: randomSalt() },
+      { secretKey: identity.secretKey, stake: 1n, salt: randomSalt(), ownerSalt: randomSalt() },
       (ctx) => this.contract.impureCircuits.resolve(ctx, outcome).context,
       'outcome recorded; settlement terms frozen',
     );
   }
 
   claim(identity: Identity, positionId: bigint) {
+    const note = this.notesFor(identity.id).find((n) => n.positionId === positionId);
     return this.run(
       identity,
       `claimEntitlement(#${positionId})`,
-      { secretKey: identity.secretKey, stake: 1n, salt: randomSalt() },
+      {
+        secretKey: identity.secretKey,
+        stake: 1n,
+        salt: randomSalt(),
+        // Claiming re-proves ownership, so the blinding is needed here as well
+        // as at reveal. An outsider has no note and is refused.
+        ownerSalt: note?.ownerSalt ?? randomSalt(),
+      },
       (ctx) => this.contract.impureCircuits.claimEntitlement(ctx, positionId).context,
       'entitlement recorded (no value moved)',
     );

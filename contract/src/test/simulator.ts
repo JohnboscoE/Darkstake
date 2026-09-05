@@ -25,17 +25,37 @@ import { createWitnesses, type PMPrivateState } from '../witnesses.js';
 
 export { Side, Phase };
 
-/** A participant: their secret key plus the stake and salt they are holding. */
+/**
+ * A participant: their secret key plus the two secrets a position needs.
+ *
+ * `salt` blinds the stake commitment, `ownerSalt` blinds the owner tag. Both
+ * are per-position in real use; the tests fix them per user so a test can name
+ * the exact bytes it is proving something about.
+ */
 export interface User {
   secretKey: Uint8Array;
   stake: bigint;
   salt: Uint8Array;
+  ownerSalt: Uint8Array;
 }
 
-export const user = (fill: number, stake: bigint, saltFill = fill + 100): User => ({
+export const user = (
+  fill: number,
+  stake: bigint,
+  saltFill = fill + 100,
+  ownerSaltFill = fill + 150,
+): User => ({
   secretKey: new Uint8Array(32).fill(fill),
   stake,
   salt: new Uint8Array(32).fill(saltFill),
+  ownerSalt: new Uint8Array(32).fill(ownerSaltFill),
+});
+
+/** The same person opening a second position: same key, fresh blinding. */
+export const withFreshBlinding = (u: User, ownerSaltFill: number, stake = u.stake): User => ({
+  ...u,
+  stake,
+  ownerSalt: new Uint8Array(32).fill(ownerSaltFill),
 });
 
 export class MarketSimulator {
@@ -52,7 +72,12 @@ export class MarketSimulator {
     const { currentPrivateState, currentContractState, currentZswapLocalState } =
       this.contract.initialState(
         createConstructorContext(
-          { secretKey: deployer.secretKey, stake: deployer.stake, salt: deployer.salt },
+          {
+            secretKey: deployer.secretKey,
+            stake: deployer.stake,
+            salt: deployer.salt,
+            ownerSalt: deployer.ownerSalt,
+          },
           '0'.repeat(64),
         ),
       );
@@ -74,7 +99,12 @@ export class MarketSimulator {
   private as(u: User): void {
     this.context = {
       ...this.context,
-      currentPrivateState: { secretKey: u.secretKey, stake: u.stake, salt: u.salt },
+      currentPrivateState: {
+        secretKey: u.secretKey,
+        stake: u.stake,
+        salt: u.salt,
+        ownerSalt: u.ownerSalt,
+      },
     };
   }
 

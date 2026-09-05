@@ -158,8 +158,13 @@ resolver and lets you drive the whole lifecycle — commit, close, reveal, resol
 claim — end to end.
 
 **Reviewed:** [contract/SECURITY-REVIEW.md](contract/SECURITY-REVIEW.md) works
-through the contract against the Midnight Expert review checklists, including
-two findings that are open and accepted for v1.
+through the contract against the Midnight Expert review checklists. It found two
+things, both fixed in v2: commitments now use the stdlib's `persistentCommit`
+rather than a hand-rolled salted hash, and **each position's owner tag is blinded
+separately**, so two positions opened by one key are unlinkable on-chain. Before
+that, splitting a large stake across several positions did not actually hide the
+total — an observer grouped them by owner tag and added the revealed parts back
+together.
 
 **v1 limitations, stated plainly:**
 
@@ -167,9 +172,6 @@ two findings that are open and accepted for v1.
 - Entitlements are recorded, not paid. There is no escrow; settlement is a
   ledger of who is owed what, on terms anyone can verify.
 - Commit timing is observable, as described above.
-- All positions opened by one key share an `ownerHash`, so an observer can group
-  them within a market — which partly undoes splitting a stake to hide its size.
-  See finding 2 in the security review for the fix and what it costs.
 - Interacting on-chain needs the Lace extension, a local proof server and
   preview NIGHT. That is the standard Midnight dapp requirement, not a quirk of
   this project, but it is real friction.

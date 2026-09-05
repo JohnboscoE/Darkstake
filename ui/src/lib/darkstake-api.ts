@@ -114,10 +114,16 @@ export const entitlementOf = (state: Ledger, positionId: bigint): bigint => {
  * The sort is load-bearing: `positions` is a Merkle-backed map keyed by hash,
  * so iterating it yields no useful order and an unsorted table would reshuffle
  * itself every time a block changed the map.
+ *
+ * `mine` comes from the caller's own notes, not from the ledger. That is not a
+ * shortcut -- it is the point. Since v2 blinds each position's owner tag with
+ * fresh randomness, two positions by one key are unequal on-chain, so **this
+ * client cannot recognise its own positions from public state either**. It knows
+ * them because it wrote down their ids when it committed them. Any observer,
+ * including us, is in exactly the same position as everyone else.
  */
-export const positionsOf = (state: Ledger, ownerHash: Uint8Array | null): LivePosition[] => {
-  const mine = ownerHash === null ? null : hex(ownerHash);
-  return Array.from(state.positions)
+export const positionsOf = (state: Ledger, myPositionIds: ReadonlySet<string>): LivePosition[] =>
+  Array.from(state.positions)
     .map(([id, p]): LivePosition => ({
       id,
       side: p.side,
@@ -126,10 +132,9 @@ export const positionsOf = (state: Ledger, ownerHash: Uint8Array | null): LivePo
       revealed: p.revealed,
       revealedStake: p.revealedStake,
       claimed: p.claimed,
-      mine: mine !== null && hex(p.ownerHash) === mine,
+      mine: myPositionIds.has(String(id)),
     }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-};
 
 export class DarkstakeAPI {
   private constructor(
@@ -138,7 +143,7 @@ export class DarkstakeAPI {
     private readonly secretKey: Uint8Array,
   ) {
     this.contractAddress = deployed.deployTxData.public.contractAddress;
-    this.ownerHash = pureCircuits.ownerCommitment(secretKey);
+    this.resolverId = pureCircuits.resolverId(secretKey);
 
     providers.privateStateProvider.setContractAddress(this.contractAddress);
 
@@ -148,14 +153,21 @@ export class DarkstakeAPI {
   }
 
   readonly contractAddress: string;
-  /** `hash(secretKey)`; what identifies our positions in public state. */
-  readonly ownerHash: Uint8Array;
+  /**
+   * This key's resolver identity.
+   *
+   * Unblinded, unlike a position's owner tag, because a market's resolver is
+   * public by design -- you have to be able to check who may close the book
+   * before you stake into it. Different domain separator from the owner tag, so
+   * the two derivations of the same secret cannot be correlated.
+   */
+  readonly resolverId: Uint8Array;
   /** The chain's view of this market, re-emitted on every block that changes it. */
   readonly state$: Observable<Ledger>;
 
   /** True when this key is the one the contract will accept as resolver. */
   isResolver(state: Ledger): boolean {
-    return hex(state.resolver) === hex(this.ownerHash);
+    return hex(state.resolver) === hex(this.resolverId);
   }
 
   /**
@@ -167,7 +179,7 @@ export class DarkstakeAPI {
     const deployed = await deployContract(providers, {
       compiledContract: CompiledPredictionMarket,
       privateStateId: pmPrivateStateKey,
-      initialPrivateState: { secretKey, stake: 0n, salt: zeroSalt() },
+      initialPrivateState: { secretKey, stake: 0n, salt: zeroSalt(), ownerSalt: zeroSalt() },
     });
     return new DarkstakeAPI(deployed, providers, secretKey);
   }
@@ -182,7 +194,7 @@ export class DarkstakeAPI {
       contractAddress,
       compiledContract: CompiledPredictionMarket,
       privateStateId: pmPrivateStateKey,
-      initialPrivateState: { secretKey, stake: 0n, salt: zeroSalt() },
+      initialPrivateState: { secretKey, stake: 0n, salt: zeroSalt(), ownerSalt: zeroSalt() },
     });
     return new DarkstakeAPI(found, providers, secretKey);
   }
@@ -206,9 +218,18 @@ export class DarkstakeAPI {
    * values have to be in place *before* the call rather than passed to it.
    * Calls that stake nothing still pass a non-zero placeholder: no circuit but
    * `commitPosition` reads it, and `commitPosition` asserts it is positive.
+   *
+   * `ownerSalt` is the one that must be exactly right on reveal and on claim.
+   * It blinds the position's owner tag, so supplying a different value is
+   * indistinguishable from not owning the position -- the circuit rejects it
+   * with "not owner", which is the same message a genuine impostor gets.
    */
-  private async loadWitnesses(stake: bigint, salt: Uint8Array): Promise<void> {
-    const state: PMPrivateState = { secretKey: this.secretKey, stake, salt };
+  private async loadWitnesses(
+    stake: bigint,
+    salt: Uint8Array,
+    ownerSalt: Uint8Array,
+  ): Promise<void> {
+    const state: PMPrivateState = { secretKey: this.secretKey, stake, salt, ownerSalt };
     this.providers.privateStateProvider.setContractAddress(this.contractAddress);
     await this.providers.privateStateProvider.set(pmPrivateStateKey, state);
   }
@@ -235,9 +256,13 @@ export class DarkstakeAPI {
   async commitPosition(
     side: Side,
     stake: bigint,
-  ): Promise<CallOutcome & { salt?: Uint8Array; positionId?: bigint }> {
+  ): Promise<CallOutcome & { salt?: Uint8Array; ownerSalt?: Uint8Array; positionId?: bigint }> {
     const salt = randomSalt();
-    await this.loadWitnesses(stake, salt);
+    // Fresh per position, and never reused. Reusing it across two positions
+    // makes their owner tags equal again, which is precisely the linkage the
+    // blinding exists to remove.
+    const ownerSalt = randomSalt();
+    await this.loadWitnesses(stake, salt, ownerSalt);
     const outcome = await this.submit(() => this.deployed.callTx.commitPosition(side));
     if (!outcome.ok) return outcome;
 
@@ -255,12 +280,12 @@ export class DarkstakeAPI {
     } catch {
       // The position exists on-chain either way; we just cannot label it yet.
     }
-    return { ...outcome, salt, positionId };
+    return { ...outcome, salt, ownerSalt, positionId };
   }
 
   /** Resolver only: closes the book so stakes can be revealed. */
   async closeMarket(): Promise<CallOutcome> {
-    await this.loadWitnesses(1n, zeroSalt());
+    await this.loadWitnesses(1n, zeroSalt(), zeroSalt());
     return this.submit(() => this.deployed.callTx.closeMarket());
   }
 
@@ -271,20 +296,30 @@ export class DarkstakeAPI {
    * of the reveal is that these values become public, and the circuit checks
    * them against the commitment posted before the outcome was known.
    */
-  async revealPosition(positionId: bigint, stake: bigint, salt: Uint8Array): Promise<CallOutcome> {
-    await this.loadWitnesses(stake, salt);
+  async revealPosition(
+    positionId: bigint,
+    stake: bigint,
+    salt: Uint8Array,
+    ownerSalt: Uint8Array,
+  ): Promise<CallOutcome> {
+    await this.loadWitnesses(stake, salt, ownerSalt);
     return this.submit(() => this.deployed.callTx.revealPosition(positionId, stake, salt));
   }
 
   /** Resolver only: records the outcome and freezes the settlement terms. */
   async resolve(outcome: Side): Promise<CallOutcome> {
-    await this.loadWitnesses(1n, zeroSalt());
+    await this.loadWitnesses(1n, zeroSalt(), zeroSalt());
     return this.submit(() => this.deployed.callTx.resolve(outcome));
   }
 
-  /** Records that this position is entitled to a share. Moves no value. */
-  async claimEntitlement(positionId: bigint): Promise<CallOutcome> {
-    await this.loadWitnesses(1n, zeroSalt());
+  /**
+   * Records that this position is entitled to a share. Moves no value.
+   *
+   * Takes `ownerSalt` because claiming re-proves ownership, exactly as
+   * revealing does -- the blinding is needed at both ends of a position's life.
+   */
+  async claimEntitlement(positionId: bigint, ownerSalt: Uint8Array): Promise<CallOutcome> {
+    await this.loadWitnesses(1n, zeroSalt(), ownerSalt);
     return this.submit(() => this.deployed.callTx.claimEntitlement(positionId));
   }
 }

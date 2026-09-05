@@ -27,7 +27,18 @@
 export interface StoredNote {
   positionId: bigint;
   stake: bigint;
+  /** Blinds the stake commitment. Hides *how much*. */
   salt: Uint8Array;
+  /**
+   * Blinds the position's owner tag. Hides *that this position is yours*, and
+   * therefore that it and your other positions are the same person's.
+   *
+   * A second secret to lose, which is a real cost. It buys the property that
+   * splitting a large stake across several positions actually hides the total:
+   * without it every position you open carries the same tag, and an observer
+   * just adds your revealed parts back together.
+   */
+  ownerSalt: Uint8Array;
 }
 
 /** Marks notes belonging to the in-memory demo rather than a deployed market. */
@@ -39,6 +50,7 @@ type SerializedNote = {
   positionId: string;
   stake: string;
   salt: string;
+  ownerSalt?: string;
 };
 
 const toHex = (bytes: Uint8Array): string =>
@@ -87,6 +99,12 @@ export const loadNotes = (contractAddress: string, identityId: string): StoredNo
       positionId: BigInt(n.positionId),
       stake: BigInt(n.stake),
       salt: fromHex(n.salt),
+      // Notes written before owner blinding existed have no `ownerSalt`. They
+      // belong to a market at a different address -- the contract changed, so
+      // the deployment did -- and cannot be used against this one. Reading them
+      // as zeros keeps the parse total; the reveal would fail on "not owner"
+      // rather than crash here.
+      ownerSalt: n.ownerSalt === undefined ? new Uint8Array(32) : fromHex(n.ownerSalt),
     }));
   } catch {
     // Corrupt or from an older shape. Dropping is safe: notes are a cache of
@@ -100,6 +118,7 @@ export const saveNotes = (contractAddress: string, identityId: string, notes: St
     positionId: n.positionId.toString(),
     stake: n.stake.toString(),
     salt: toHex(n.salt),
+    ownerSalt: toHex(n.ownerSalt),
   }));
   return safeSet(keyFor(contractAddress, identityId), JSON.stringify(serialized));
 };
@@ -179,6 +198,7 @@ export const exportNotes = (contractAddress: string, identityIds: string[]): str
             positionId: n.positionId.toString(),
             stake: n.stake.toString(),
             salt: toHex(n.salt),
+            ownerSalt: toHex(n.ownerSalt),
           })),
         ]),
       ),

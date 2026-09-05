@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   DarkstakeAPI,
@@ -32,6 +32,9 @@ import {
  * the notes it owns need no further discrimination.
  */
 const LIVE_IDENTITY = 'me';
+
+const toHex = (bytes: Uint8Array): string =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
 export type LiveStage =
   /** No wallet connected yet. Nothing has touched the network. */
@@ -190,8 +193,18 @@ export function useLiveMarket() {
       setBusy('commitPosition');
       try {
         const outcome = await api.commitPosition(side, stake);
-        if (outcome.ok && outcome.salt && outcome.positionId !== undefined) {
-          const note: StoredNote = { positionId: outcome.positionId, stake, salt: outcome.salt };
+        if (
+          outcome.ok &&
+          outcome.salt &&
+          outcome.ownerSalt &&
+          outcome.positionId !== undefined
+        ) {
+          const note: StoredNote = {
+            positionId: outcome.positionId,
+            stake,
+            salt: outcome.salt,
+            ownerSalt: outcome.ownerSalt,
+          };
           const saved = appendNote(api.contractAddress, LIVE_IDENTITY, note);
           setNotes(loadNotes(api.contractAddress, LIVE_IDENTITY));
           record(
@@ -207,11 +220,9 @@ export function useLiveMarket() {
           record(
             `commitPosition(${side === Side.YES ? 'YES' : 'NO'})`,
             true,
-            `submitted, but the position id could not be read back. Salt: ${
-              outcome.salt
-                ? Array.from(outcome.salt, (b) => b.toString(16).padStart(2, '0')).join('')
-                : 'unavailable'
-            } — save this.`,
+            `submitted, but the position id could not be read back. Save both secrets now — stake salt ${
+              outcome.salt ? toHex(outcome.salt) : 'unavailable'
+            }, owner salt ${outcome.ownerSalt ? toHex(outcome.ownerSalt) : 'unavailable'}.`,
           );
         } else {
           record(`commitPosition(${side === Side.YES ? 'YES' : 'NO'})`, false, outcome.detail);
@@ -228,7 +239,7 @@ export function useLiveMarket() {
   const reveal = useCallback(
     (note: StoredNote) =>
       run(`revealPosition(#${note.positionId})`, (api) =>
-        api.revealPosition(note.positionId, note.stake, note.salt),
+        api.revealPosition(note.positionId, note.stake, note.salt, note.ownerSalt),
       ),
     [run],
   );
@@ -240,14 +251,24 @@ export function useLiveMarket() {
   );
 
   const claim = useCallback(
-    (positionId: bigint) =>
-      run(`claimEntitlement(#${positionId})`, (api) => api.claimEntitlement(positionId)),
+    (note: StoredNote) =>
+      run(`claimEntitlement(#${note.positionId})`, (api) =>
+        api.claimEntitlement(note.positionId, note.ownerSalt),
+      ),
     [run],
   );
 
   const api = apiRef.current;
+  // Which positions are ours is answered from local notes, because since v2 it
+  // cannot be answered from the chain: each position's owner tag is blinded
+  // separately, so nothing on-chain groups them. This client is no better
+  // placed than any other observer, which is the property we wanted.
+  const myPositionIds = useMemo(
+    () => new Set(notes.map((n) => String(n.positionId))),
+    [notes],
+  );
   const positions: LivePosition[] =
-    ledgerState === null ? [] : positionsOf(ledgerState, api?.ownerHash ?? null);
+    ledgerState === null ? [] : positionsOf(ledgerState, myPositionIds);
 
   return {
     stage,

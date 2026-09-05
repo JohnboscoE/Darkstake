@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MarketSimulator, Side, Phase, user } from './simulator.js';
+import { MarketSimulator, Side, Phase, user, withFreshBlinding } from './simulator.js';
 
 // A whale and a minnow, so the privacy tests can check that the ledger gives
 // no way to tell them apart. Stakes are chosen so the pro-rata arithmetic lands
@@ -81,6 +81,81 @@ describe('Darkstake prediction market', () => {
       const p = sim.ledger.positions.lookup(1n);
       expect(p.ownerHash).not.toEqual(WHALE.secretKey);
       expect(p.ownerHash).toHaveLength(32);
+    });
+  });
+
+  // ── Finding 2 from SECURITY-REVIEW.md, and the regression test for it ───
+  //
+  // v1 tagged every position with hash(domain, sk), so all positions opened by
+  // one key were equal on-chain. An observer could group them and, once they
+  // revealed, add the parts back together -- which defeats the obvious defence
+  // of splitting a large stake into several small ones.
+  describe('privacy: positions by one staker are not linkable', () => {
+    it('gives one key two different owner tags across two positions', () => {
+      const first = WHALE;
+      const second = withFreshBlinding(WHALE, 201, 50_000n);
+
+      sim.commitPosition(first, Side.YES);
+      sim.commitPosition(second, Side.YES);
+
+      const [a, b] = sim.allPositions();
+      expect(a.ownerHash).not.toEqual(b.ownerHash);
+    });
+
+    it('lets a split stake hide its total from an observer', () => {
+      // One whale splitting 250,000 into three, against a single decoy.
+      const parts = [
+        withFreshBlinding(WHALE, 210, 150_000n),
+        withFreshBlinding(WHALE, 211, 60_000n),
+        withFreshBlinding(WHALE, 212, 40_000n),
+      ];
+      for (const part of parts) sim.commitPosition(part, Side.YES);
+      sim.commitPosition(MINNOW, Side.YES);
+
+      // Four positions, four distinct owner tags. Nothing on the ledger says
+      // three of them are one person, so nothing says the whale staked 250,000.
+      const tags = sim.allPositions().map((p) => Buffer.from(p.ownerHash).toString('hex'));
+      expect(new Set(tags).size).toBe(4);
+    });
+
+    it('still lets the owner prove each position is theirs', () => {
+      const first = WHALE;
+      const second = withFreshBlinding(WHALE, 201, 50_000n);
+      sim.commitPosition(first, Side.YES);
+      sim.commitPosition(second, Side.YES);
+      sim.closeMarket(RESOLVER);
+
+      // Blinding the tag must not cost the owner the ability to open it: each
+      // position is revealed with the blinding it was committed under.
+      sim.revealPosition(first, 1n, first.stake, first.salt);
+      sim.revealPosition(second, 2n, second.stake, second.salt);
+
+      expect(sim.ledger.positions.lookup(1n).revealed).toBe(true);
+      expect(sim.ledger.positions.lookup(2n).revealed).toBe(true);
+    });
+
+    it('rejects a reveal that presents the wrong blinding', () => {
+      sim.commitPosition(WHALE, Side.YES);
+      sim.closeMarket(RESOLVER);
+
+      // Right key, right stake, right stake-salt -- wrong owner blinding. The
+      // owner tag no longer matches, so the circuit refuses.
+      const wrongBlinding = withFreshBlinding(WHALE, 222);
+      expect(() => sim.revealPosition(wrongBlinding, 1n, WHALE.stake, WHALE.salt)).toThrow(
+        /not owner/,
+      );
+    });
+
+    it('re-links positions if the client reuses one blinding', () => {
+      // Not a contract bug -- a statement of what the client must do. Fresh
+      // randomness per position is the whole mechanism; reuse gives back the
+      // v1 behaviour, so this test exists to make that requirement visible.
+      const second = withFreshBlinding(WHALE, WHALE.ownerSalt[0], 50_000n);
+      sim.commitPosition(WHALE, Side.YES);
+      sim.commitPosition(second, Side.YES);
+
+      const [a, b] = sim.allPositions();
+      expect(a.ownerHash).toEqual(b.ownerHash);
     });
   });
 

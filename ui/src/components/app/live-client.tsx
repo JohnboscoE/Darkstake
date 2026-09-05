@@ -19,7 +19,7 @@ interface Props {
   onClose: () => void;
   onReveal: (note: StoredNote) => void;
   onResolve: (side: Side) => void;
-  onClaim: (id: bigint) => void;
+  onClaim: (note: StoredNote) => void;
 }
 
 /**
@@ -286,7 +286,7 @@ export function LiveClient(props: Props) {
                         size="sm"
                         className="w-full"
                         disabled={claimed || !revealed || working}
-                        onClick={() => props.onClaim(n.positionId)}
+                        onClick={() => props.onClaim(n)}
                       >
                         {claimed
                           ? 'Claimed'

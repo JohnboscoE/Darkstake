@@ -171,10 +171,15 @@ const main = async (): Promise<void> => {
     // market, so it is written out alongside the contract address.
     const resolverSecretKey = new Uint8Array(32);
     webcrypto.getRandomValues(resolverSecretKey);
+    // The resolver stakes nothing, so the two blinding factors are unused here.
+    // They still have to be present: the witnesses are read whenever a circuit
+    // runs, and an absent field would surface as a runtime error rather than a
+    // type error.
     const initialPrivateState: PMPrivateState = {
       secretKey: resolverSecretKey,
       stake: 0n,
       salt: new Uint8Array(32),
+      ownerSalt: new Uint8Array(32),
     };
 
     logger.info('Deploying prediction market...');

@@ -9,12 +9,14 @@ const witnesses = {
   localSecretKey: ({ privateState }) => [privateState, privateState.secretKey],
   stakeValue: ({ privateState }) => [privateState, privateState.stake],
   stakeSalt: ({ privateState }) => [privateState, privateState.salt],
+  ownerSalt: ({ privateState }) => [privateState, privateState.ownerSalt],
 };
 
 const mk = (fill, stake) => ({
   secretKey: new Uint8Array(32).fill(fill),
   stake,
   salt: new Uint8Array(32).fill(fill + 100),
+  ownerSalt: new Uint8Array(32).fill(fill + 150),
 });
 
 // Chosen so the pro-rata arithmetic lands exactly: the YES side stakes 250,040

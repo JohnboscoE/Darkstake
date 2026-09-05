@@ -4,8 +4,9 @@
 (`compact-core`: `compact-security`, `compact-privacy-disclosure`, and the
 `compact-review` privacy and security references).
 
-Two findings are open and accepted for v1. Both are recorded here with what they
-cost and what the fix is, rather than being left for a reader to notice.
+Two findings came out of it. Both are **fixed in v2**, which is the deployed
+version; each is recorded below with what it cost, because neither fix was
+free.
 
 ---
 
@@ -18,8 +19,8 @@ may depend on it until the circuit has constrained it.
 Every gate in this contract has the same shape:
 
 ```compact
-assert(ownerCommitment(localSecretKey()) == resolver, "not the resolver");
-assert(ownerCommitment(localSecretKey()) == p.ownerHash, "not owner");
+assert(resolverId(localSecretKey()) == resolver, "not the resolver");
+assert(ownerTag(localSecretKey(), ownerSalt()) == p.ownerHash, "not owner");
 ```
 
 The witness is hashed with a domain separator and compared against a value
@@ -100,63 +101,79 @@ overflow, not a theoretical one.
 
 ## Finding 1 — `persistentHash` with a salt, where the primitive is `persistentCommit`
 
-**Severity: low (best-practice deviation). Not fixed in v1.**
+**Severity: low (best-practice deviation). Fixed in v2.**
+
+v1 hand-rolled a commitment by folding the salt into a `persistentHash`
+preimage:
 
 ```compact
-export circuit stakeCommit(stake: Uint<64>, salt: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>(
-    [pad(32, "pm:stake:"), stake as Field as Bytes<32>, salt]);
+persistentHash<Vector<3, Bytes<32>>>([pad(32, "pm:stake:"), stake, salt])
+```
+
+That was sound — a 32-byte per-position salt is a real blinding factor, so the
+construction was hiding and binding — but it reimplemented what the standard
+library already provides, and `persistentHash` is documented as binding-only.
+The checklist item is "`persistentHash` used where `persistentCommit` is
+needed", and the reviewer reading it has no way to tell a considered choice from
+an unconsidered one.
+
+v2 uses the primitive:
+
+```compact
+persistentCommit<Vector<2, Bytes<32>>>([pad(32, "pm:stake:"), stake as Field as Bytes<32>], salt)
+```
+
+The domain separator stays inside the committed vector, so commitments from this
+contract cannot be replayed into another scheme that commits to a bare stake.
+
+## Finding 2 — one `ownerHash` per staker made their positions linkable
+
+**Severity: medium (privacy limitation). Fixed in v2.**
+
+v1 tagged every position with `hash("pm:owner:", sk)` — identical for every
+position one key opened. Nothing tied it to a wallet address or to anything
+off-chain, and Lace rather than this key balances the transaction, so it did not
+lead back to the payer. But **within one market it grouped a staker's
+positions**, and that is worse than it sounds: splitting a large stake across
+several positions is the obvious way to blur size, and the grouping undid it —
+an observer waits for the reveals and adds the parts back together.
+
+v2 blinds the tag per position:
+
+```compact
+export circuit ownerTag(sk: Bytes<32>, blinding: Bytes<32>): Bytes<32> {
+  return persistentCommit<Vector<2, Bytes<32>>>([pad(32, "pm:owner:"), sk], blinding);
 }
 ```
 
-The checklist item is "`persistentHash` used where `persistentCommit` is needed",
-on two grounds: `persistentHash` does not clear witness taint, and a hash without
-a blinding factor provides binding but not hiding.
+`witness ownerSalt()` supplies fresh randomness at commit; the same value is
+re-supplied at reveal and at claim, where the circuit recomputes the tag and
+compares it against the stored one. Ownership is still provable, and two
+positions by one key are now unequal on-chain.
 
-Neither ground bites here, but the deviation is real and worth stating:
+The resolver keeps an unblinded identity under a **separate domain**,
+`resolverId(sk) = hash("pm:resolver:", sk)`. That is not the same mistake: a
+market's legitimacy depends on everyone being able to check, before staking, who
+may close the book. Splitting the domain matters — reusing one domain for both
+purposes is what would let the resolver's public id be correlated with the
+positions they staked themselves.
 
-- **Hiding.** The second objection is about hashes with *no* randomness, where a
-  small input space is brute-forceable. A stake is a `Uint<64>` — trivially
-  brute-forceable on its own — which is exactly why `salt` is 32 bytes of fresh
-  randomness per position, drawn in the client and never reused. With that
-  blinding factor the construction is a standard hash-based commitment: hiding
-  from the salt, binding from collision resistance.
-- **Taint.** `persistentHash` not clearing taint means the result needs an
-  explicit `disclose()`. That is correct here rather than inconvenient — the
-  commitment *must* be public, and writing the disclosure out makes that a
-  decision in the source rather than something the primitive did quietly.
+### What this costs
 
-**Why it is not changed:** `persistentCommit` is the idiomatic primitive and a
-future version should use it. Switching costs a recompile, a fresh set of proving
-keys from the `proving-keys` workflow, and a redeploy to a new address — contract
-logic is immutable, so there is no in-place upgrade. That is a poor trade for a
-construction that is already sound. It is a v2 change, made together with
-Finding 2, which needs a redeploy anyway.
-
-## Finding 2 — one `ownerHash` per staker makes their positions linkable
-
-**Severity: medium (privacy limitation, by design in v1). Not fixed in v1.**
-
-`ownerHash` is `hash("pm:owner:", secretKey)` — the same value for every position
-a given key opens. It is not linkable to a wallet address or to anything
-off-chain, and the transaction is balanced by Lace rather than by this key, so it
-does not tie back to the payer. But **within one market, an observer can group a
-staker's positions**: three rows sharing an `ownerHash` are three positions by
-one person.
-
-That matters more than it first appears. Splitting a large stake across several
-positions is the obvious way to blur size — and the grouping undoes it, because
-the observer can add the parts back up once they reveal.
-
-**The fix, for v2:** make the per-position owner tag a commitment rather than a
-bare hash, `hash("pm:owner:", sk, positionSalt)`, with a fresh `positionSalt`
-stored client-side next to the stake salt. Ownership is still provable at reveal
-and claim — the prover supplies the same salt — but two positions by one key are
-no longer equal, so nothing links them. The cost is one more secret the client
-must not lose, on top of the stake and the salt.
-
-The `compact-privacy-disclosure` skill's "unlinkable auth" pattern (round-based
-key rotation via a `Counter`) is the more general form of the same idea.
+- **A second secret per position.** Lose `ownerSalt` and the position can never
+  be proven yours — the same failure mode as losing the stake salt, and now
+  there are two ways to hit it. `notes-store.ts` persists both and the export
+  carries both.
+- **The client can no longer recognise its own positions from public state.**
+  It knows them because it recorded their ids at commit time. This is the
+  property working as intended: our UI is in exactly the same position as any
+  other observer. `positionsOf()` takes a set of ids from local notes rather
+  than matching an owner hash.
+- **Fresh randomness per position is now a client obligation.** Reusing one
+  `ownerSalt` across two positions makes their tags equal again and hands back
+  the v1 behaviour. The contract cannot enforce this — a witness can return
+  anything — so it is covered by a test that asserts reuse re-links them, to
+  keep the requirement visible rather than implicit.
 
 ---
 
@@ -169,6 +186,11 @@ version that actually settles would need shielded token custody, which is a
 larger design than this one.
 
 The resolver is a single trusted party, named in the constructor and gated on
-every privileged circuit. It can report an outcome the world disagrees with. That
-is a governance problem, not a contract bug, and the honest v2 answer is a
+every privileged circuit. It can report an outcome the world disagrees with.
+That is a governance problem, not a contract bug, and the honest answer is a
 multi-party or dispute-window resolver rather than better asserts.
+
+Commit *timing* remains observable. Transactions are ordered and visible, so a
+watcher learns when positions were opened even though they learn nothing about
+size or owner. Hiding that needs batching or delayed submission, neither of
+which is in this contract.

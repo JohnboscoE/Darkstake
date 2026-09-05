@@ -8,6 +8,27 @@
 // the leaderboard discloses its score, we store only a *commitment* to the
 // stake and keep the amount off-chain until the reveal phase. Any `disclose()`
 // of a raw stake before then is the bug this contract exists to avoid.
+//
+// v2 closes the two findings in SECURITY-REVIEW.md:
+//
+//   1. Commitments use `persistentCommit`, the stdlib primitive, rather than
+//      `persistentHash` with a salt folded into the preimage. The old form was
+//      sound -- the salt was a real blinding factor -- but it hand-rolled what
+//      the library already provides, and `persistentHash` is documented as
+//      binding-only.
+//
+//   2. A position's owner tag is now BLINDED per position. It used to be
+//      `hash(domain, sk)`, identical for every position one key opened, so an
+//      observer could group a staker's positions and add their revealed stakes
+//      back together -- which defeats splitting a stake to hide its size. Now
+//      each position carries `commit([domain, sk], ownerSalt)` with fresh
+//      randomness, so two positions by the same key are unequal and unlinkable.
+//
+// The resolver keeps an unblinded, stable id. That is deliberate and is not the
+// same mistake: a market's legitimacy depends on everyone knowing in advance who
+// may resolve it, so that identity is public by design. It uses its own domain
+// separator, because reusing one domain for two purposes is what makes a
+// commitment and its nullifier linkable.
 
 pragma language_version 0.23;
 
@@ -63,20 +84,37 @@ witness localSecretKey(): Bytes<32>;
 witness stakeValue(): Uint<64>;
 witness stakeSalt(): Bytes<32>;
 
+// Blinding factor for this position's owner tag. Fresh per position on commit,
+// and re-supplied unchanged at reveal and at claim -- lose it and the position
+// can never be proven yours, exactly as with `stakeSalt`.
+witness ownerSalt(): Bytes<32>;
+
 // The deployer is the resolver. One contract instance == one market.
 constructor() {
   phase = Phase.OPEN;
   winningSide = none<Side>();
-  resolver = disclose(ownerCommitment(localSecretKey()));
+  resolver = disclose(resolverId(localSecretKey()));
 }
 
-export circuit ownerCommitment(sk: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pm:owner:"), sk]);
+// The resolver's public identity. Unblinded on purpose: there is exactly one
+// resolver per market and everyone must be able to check, before staking, that
+// the account closing the book is the one that deployed it. This is the stdlib's
+// documented public-key derivation -- `persistentHash` over a domain separator
+// and the secret -- since there is no `public_key` in the standard library.
+export circuit resolverId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pm:resolver:"), sk]);
+}
+
+// A position's owner tag, blinded so that positions by one key are unlinkable.
+// Note the separate domain from `resolverId`: one domain per purpose, or the
+// two derivations of the same secret could be correlated.
+export circuit ownerTag(sk: Bytes<32>, blinding: Bytes<32>): Bytes<32> {
+  return persistentCommit<Vector<2, Bytes<32>>>([pad(32, "pm:owner:"), sk], blinding);
 }
 
 export circuit stakeCommit(stake: Uint<64>, salt: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>(
-    [pad(32, "pm:stake:"), stake as Field as Bytes<32>, salt]);
+  return persistentCommit<Vector<2, Bytes<32>>>(
+    [pad(32, "pm:stake:"), stake as Field as Bytes<32>], salt);
 }
 
 // COMMIT: the side is public, the amount and the staker are not.
@@ -90,15 +128,20 @@ export circuit commitPosition(side: Side): [] {
   assert(stake > 0, "stake must be positive");
 
   const commitment = stakeCommit(stake, stakeSalt());
-  const ownerHash = ownerCommitment(localSecretKey());
+  const owner = ownerTag(localSecretKey(), ownerSalt());
 
   nextId.increment(1);
   const id = disclose(nextId.read() as Uint<64>);
 
   positions.insert(id, Position {
     side: disclose(side),
+    // `persistentCommit` clears witness taint, so these need no `disclose()`
+    // to reach the ledger. It is written anyway: the stdlib reference and the
+    // shipped commit-reveal example disagree on whether it is required, and a
+    // redundant annotation is cheaper than a failed compile. It changes nothing
+    // about what reaches the chain -- a commitment is public either way.
     stakeCommitment: disclose(commitment),
-    ownerHash: disclose(ownerHash),
+    ownerHash: disclose(owner),
     revealed: false,
     revealedStake: 0,
     claimed: false
@@ -116,7 +159,7 @@ export circuit commitPosition(side: Side): [] {
 // commit phase exists to hide.
 export circuit closeMarket(): [] {
   assert(phase == Phase.OPEN, "market not open");
-  assert(ownerCommitment(localSecretKey()) == resolver, "not the resolver");
+  assert(resolverId(localSecretKey()) == resolver, "not the resolver");
   phase = Phase.REVEAL;
 }
 
@@ -128,7 +171,7 @@ export circuit revealPosition(id: Uint<64>, stake: Uint<64>, salt: Bytes<32>): [
 
   const p = positions.lookup(disclose(id));
   assert(!p.revealed, "already revealed");
-  assert(ownerCommitment(localSecretKey()) == p.ownerHash, "not owner");
+  assert(ownerTag(localSecretKey(), ownerSalt()) == p.ownerHash, "not owner");
   assert(stakeCommit(stake, salt) == p.stakeCommitment, "stake != commitment");
 
   positions.insert(disclose(id), Position {
@@ -153,7 +196,7 @@ export circuit revealPosition(id: Uint<64>, stake: Uint<64>, salt: Bytes<32>): [
 // v1: single trusted resolver, named and gated.
 export circuit resolve(outcome: Side): [] {
   assert(phase == Phase.REVEAL, "not in reveal phase");
-  assert(ownerCommitment(localSecretKey()) == resolver, "not the resolver");
+  assert(resolverId(localSecretKey()) == resolver, "not the resolver");
 
   winningSide = disclose(some<Side>(outcome));
 
@@ -176,7 +219,7 @@ export circuit claimEntitlement(id: Uint<64>): [] {
   const p = positions.lookup(disclose(id));
   assert(p.revealed, "position was never revealed");
   assert(!p.claimed, "already claimed");
-  assert(ownerCommitment(localSecretKey()) == p.ownerHash, "not owner");
+  assert(ownerTag(localSecretKey(), ownerSalt()) == p.ownerHash, "not owner");
   assert(winningSide.is_some, "no outcome recorded");
   assert(p.side == winningSide.value, "position did not win");
 
