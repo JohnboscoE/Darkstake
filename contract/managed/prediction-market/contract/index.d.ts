@@ -8,6 +8,7 @@ export type Witnesses<PS> = {
   localSecretKey(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, Uint8Array];
   stakeValue(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, bigint];
   stakeSalt(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, Uint8Array];
+  ownerSalt(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, Uint8Array];
 }
 
 export type ImpureCircuits<PS> = {
@@ -33,12 +34,16 @@ export type ProvableCircuits<PS> = {
 }
 
 export type PureCircuits = {
-  ownerCommitment(sk_0: Uint8Array): Uint8Array;
+  resolverId(sk_0: Uint8Array): Uint8Array;
+  ownerTag(sk_0: Uint8Array, blinding_0: Uint8Array): Uint8Array;
   stakeCommit(stake_0: bigint, salt_0: Uint8Array): Uint8Array;
 }
 
 export type Circuits<PS> = {
-  ownerCommitment(context: __compactRuntime.CircuitContext<PS>, sk_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
+  resolverId(context: __compactRuntime.CircuitContext<PS>, sk_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
+  ownerTag(context: __compactRuntime.CircuitContext<PS>,
+           sk_0: Uint8Array,
+           blinding_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
   stakeCommit(context: __compactRuntime.CircuitContext<PS>,
               stake_0: bigint,
               salt_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;

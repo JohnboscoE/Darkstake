@@ -4,12 +4,37 @@
   "runtime-version": "0.16.0",
   "circuits": [
     {
-      "name": "ownerCommitment",
+      "name": "resolverId",
       "pure": true,
       "proof": false,
       "arguments": [
         {
           "name": "sk",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "ownerTag",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "sk",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "blinding",
           "type": {
             "type-name": "Bytes",
             "length": 32
@@ -178,6 +203,15 @@
     },
     {
       "name": "stakeSalt",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "ownerSalt",
       "arguments": [
       ],
       "result type": {
