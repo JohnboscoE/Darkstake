@@ -15,6 +15,10 @@
 interface ImportMetaEnv {
   /** Public HTTPS URL of a Midnight proof server. See src/lib/zk-config.ts. */
   readonly VITE_PROOF_SERVER_URL?: string;
+  /** Address of the deployed market to join. Without it there is no live mode. */
+  readonly VITE_CONTRACT_ADDRESS?: string;
+  /** Midnight network to talk to; must match what Lace is set to. */
+  readonly VITE_NETWORK_ID?: string;
 }
 
 interface ImportMeta {
