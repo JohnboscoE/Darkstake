@@ -13,7 +13,10 @@ services:
   proof-server:
     image: midnightntwrk/proof-server:8.0.3
     container_name: darkstake-proof-server
-    command: ["midnight-proof-server", "--network", "preview"]
+    # Network must match the wallet you funded AND the CLI's --network. A proof
+    # server on the wrong network produces proofs the chain will not accept.
+    #   MIDNIGHT_NETWORK=preprod docker compose -f proof-server/docker-compose.yml up -d --force-recreate
+    command: ["midnight-proof-server", "--network", "${MIDNIGHT_NETWORK:-preview}"]
     ports:
       - "6300:6300"
     restart: unless-stopped

@@ -76,9 +76,45 @@ export const waitForNight = async (
   }
 
   logger.info('No NIGHT yet -- waiting for funds to land...');
+
+  // Report progress while waiting. Without this the process sits silent
+  // indefinitely and there is no way to tell a wallet that is still scanning
+  // from one that finished scanning and holds nothing -- which are completely
+  // different problems: the first needs patience, the second needs funds.
+  let reported = 0;
   return Rx.firstValueFrom(
     wallet.state().pipe(
       Rx.throttleTime(throttleTime),
+      Rx.tap((state) => {
+        const balance = state.unshielded.balances[tokenType.raw] ?? 0n;
+        // Report the three sub-wallets separately. "Not synced" is not one
+        // condition -- shielded, unshielded and dust scan independently, and
+        // knowing which is lagging is the difference between waiting and
+        // debugging.
+        const shielded = isComplete(state.shielded.state.progress);
+        const unshielded = isComplete(state.unshielded.progress);
+        const dust = isComplete(state.dust.state.progress);
+        const synced = shielded && unshielded && dust;
+        reported += 1;
+
+        if (synced && balance === 0n) {
+          // Scanning finished and there is nothing here. Left unsaid, this is
+          // indistinguishable from still-scanning, and the process waits
+          // forever either way. Warn on first sight, then occasionally.
+          if (reported === 1 || reported % 15 === 0) {
+            logger.warn(
+              `Wallet is fully synced and holds 0 NIGHT at ${unshieldedAddressOf(state.unshielded)} ` +
+                `on network '${getNetworkId()}'. The funds have not arrived, or went to another network. ` +
+                `Re-run with --faucet to request some.`,
+            );
+          }
+        } else if (reported % 5 === 1) {
+          logger.info(
+            `Waiting for NIGHT: balance=${balance} ` +
+              `sync{shielded=${shielded} unshielded=${unshielded} dust=${dust}}`,
+          );
+        }
+      }),
       Rx.filter((state) => isSynced(state) && (state.unshielded.balances[tokenType.raw] ?? 0n) > 0n),
       Rx.tap((state) => logger.info(`NIGHT balance: ${state.unshielded.balances[tokenType.raw]}`)),
       Rx.map((state) => state.unshielded),
