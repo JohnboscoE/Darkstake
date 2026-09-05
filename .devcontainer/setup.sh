@@ -39,6 +39,16 @@ compact update 0.31
 # fresh box. `compact compile` resolves the versioned toolchain itself.
 echo "==> toolchain installed at $COMPACT_DIR"
 
+echo "==> cloudflared"
+# Installed from Cloudflare's own .deb rather than a devcontainer feature, so
+# the version is not at the mercy of a third-party feature repo. Used to give
+# the proof server a public HTTPS URL that a browser can reach:
+#   .devcontainer/tunnel.sh
+ARCH="$(dpkg --print-architecture)"
+curl -sSL -o /tmp/cloudflared.deb   "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
+sudo dpkg -i /tmp/cloudflared.deb >/dev/null 2>&1 || sudo apt-get install -f -y -qq
+cloudflared --version
+
 echo "==> npm dependencies"
 for pkg in contract wallet cli ui; do
   if [ -f "$pkg/package.json" ]; then

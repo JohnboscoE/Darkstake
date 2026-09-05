@@ -49,6 +49,99 @@ export const createZkConfigProvider = (
 ): FetchZkConfigProvider<PMCircuitKeys> =>
   new FetchZkConfigProvider<PMCircuitKeys>(baseURL, fetch.bind(window));
 
+/**
+ * The proof server URL, or null when none is configured.
+ *
+ * Set `VITE_PROOF_SERVER_URL` in `ui/.env.local` (gitignored). In the
+ * devcontainer, `.devcontainer/tunnel.sh` prints a public HTTPS URL for the
+ * local proof server and tells you the exact line to add.
+ *
+ * Returns null rather than throwing when unset: no proof server is the normal
+ * state of this demo, not an error. It throws only on a value that is set but
+ * unusable, because a typo'd URL should not look identical to no URL at all.
+ */
+export const getProofServerUrl = (): string | null => {
+  const raw = import.meta.env.VITE_PROOF_SERVER_URL;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+
+  const value = raw.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`VITE_PROOF_SERVER_URL is not a valid URL: ${JSON.stringify(value)}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`VITE_PROOF_SERVER_URL must be http(s), got ${parsed.protocol}`);
+  }
+  // A page served over https cannot call a plaintext http proof server --
+  // browsers block it as mixed content, with a console error that does not
+  // obviously point here. Say so at config time instead.
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    parsed.protocol === 'http:'
+  ) {
+    throw new Error(
+      `VITE_PROOF_SERVER_URL is http:// but this page is https:// -- the browser will block it as mixed content. Use an https tunnel (see .devcontainer/tunnel.sh).`,
+    );
+  }
+  return value.replace(/\/$/, '');
+};
+
+/**
+ * Whether a proof server is configured at all.
+ *
+ * Without one the demo runs circuits unproven in memory, which is what
+ * `market-engine.ts` does today. Keys alone do not change that: a proving key
+ * is an input to a prover, and the prover is the proof server.
+ */
+export const hasProofServer = (): boolean => {
+  try {
+    return getProofServerUrl() !== null;
+  } catch {
+    return false;
+  }
+};
+
+export type ProofServerProbe = {
+  url: string;
+  reachable: boolean;
+  status: number | null;
+  detail: string;
+};
+
+/**
+ * Liveness hint for the configured proof server.
+ *
+ * Deliberately only a GET on the base URL: this checks that *something*
+ * answers, not that it speaks the proving protocol. Any status counts as
+ * reachable, since the root path is not part of the API and a 404 from the
+ * real server still proves the tunnel and the container are up.
+ */
+export const probeProofServer = async (
+  url: string | null = getProofServerUrl(),
+  fetchFunc: typeof fetch = fetch,
+): Promise<ProofServerProbe | null> => {
+  if (url === null) return null;
+  try {
+    const response = await fetchFunc(url, { method: 'GET' });
+    return {
+      url,
+      reachable: true,
+      status: response.status,
+      detail: `answered ${response.status} ${response.statusText}`.trim(),
+    };
+  } catch (error) {
+    return {
+      url,
+      reachable: false,
+      status: null,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
 export type ArtifactCheck = {
   circuit: PMCircuitKeys;
   kind: 'prover' | 'verifier' | 'bzkir';

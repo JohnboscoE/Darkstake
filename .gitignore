@@ -19,3 +19,7 @@ cli/logs/
 
 # TypeScript incremental build cache.
 *.tsbuildinfo
+
+# Local env overrides (proof server URL etc). .env.example is committed.
+.env.local
+.env.*.local

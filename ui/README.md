@@ -61,6 +61,28 @@ than trusting a directory listing: a dev server that falls back to `index.html`
 returns `200 text/html` for a missing key, so a successful request is not
 evidence the key is there.
 
+## Pointing at a proof server
+
+`VITE_PROOF_SERVER_URL` (see `.env.example`) is the seam. Unset is the normal
+state -- `getProofServerUrl()` returns null rather than throwing, because no
+proof server is the demo's default, not an error. It throws only on a value
+that is set but unusable, so a typo'd URL cannot look identical to no URL.
+
+It also rejects an `http://` proof server when the page itself is `https://`.
+Browsers block that as mixed content, and the console error does not obviously
+point at your config.
+
+In the devcontainer:
+
+```bash
+docker compose -f proof-server/docker-compose.yml up -d   # already running on :6300
+.devcontainer/tunnel.sh                                   # prints a public https URL
+echo 'VITE_PROOF_SERVER_URL=https://....trycloudflare.com' >> .env.local
+```
+
+Quick-tunnel URLs are ephemeral -- they die with the `cloudflared` process.
+Fine for a demo; use a named tunnel or a VM for anything persistent.
+
 **Keys alone do not make the demo prove anything.** A proving key is an input to
 a prover; the prover is the proof server, and there isn't one yet. `market-
 engine.ts` still runs circuits unproven in memory, which is the honest state of
