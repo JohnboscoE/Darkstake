@@ -158,6 +158,30 @@ export const waitForNight = async (
   );
 };
 
+/**
+ * Awaits a promise while reporting that it is still pending.
+ *
+ * Several SDK calls here block for minutes with no output of their own, and a
+ * silent process is indistinguishable from a hung one -- a distinction this
+ * flow has already cost real time on twice.
+ */
+const withProgress = async <T>(
+  logger: Logger,
+  label: string,
+  promise: Promise<T>,
+  intervalMs = 10_000,
+): Promise<T> => {
+  const started = Date.now();
+  const ticker = setInterval(() => {
+    logger.info(`${label}... still waiting (${Math.round((Date.now() - started) / 1000)}s)`);
+  }, intervalMs);
+  try {
+    return await promise;
+  } finally {
+    clearInterval(ticker);
+  }
+};
+
 /** The HD key the unshielded keystore is built from -- role 0, account 0, index 0. */
 const unshieldedSeedOf = (seed: string): Uint8Array => {
   const result = HDWallet.fromSeed(Buffer.from(seed, 'hex'));
@@ -183,21 +207,39 @@ export const registerForDust = async (
     return undefined;
   }
 
-  const dustState = await wallet.dust.waitForSyncedState();
+  // Blocks until the dust scan catches up from genesis. On a busy network this
+  // is the longest single wait in the flow.
+  const dustState = await withProgress(logger, 'Syncing dust state', wallet.dust.waitForSyncedState());
   const keystore = createKeystore(unshieldedSeedOf(seed), getNetworkId());
 
   logger.info(`Registering ${utxos.length} UTXO(s) for dust generation...`);
-  const recipe = await wallet.registerNightUtxosForDustGeneration(
-    utxos,
-    keystore.getPublicKey(),
-    (payload) => keystore.signData(payload),
-    dustState.address,
+  const recipe = await withProgress(
+    logger,
+    'Building registration transaction',
+    wallet.registerNightUtxosForDustGeneration(
+      utxos,
+      keystore.getPublicKey(),
+      (payload) => keystore.signData(payload),
+      dustState.address,
+    ),
   );
-  const txId = await wallet.submitTransaction(await wallet.finalizeRecipe(recipe));
+  const finalized = await withProgress(logger, 'Finalizing registration', wallet.finalizeRecipe(recipe));
+  const txId = await withProgress(logger, 'Submitting registration', wallet.submitTransaction(finalized));
   logger.info(`Dust registration submitted: ${txId}`);
 
+  // Dust accrues as blocks pass rather than appearing with the transaction, so
+  // this is a wait even once registration has confirmed.
+  logger.info('Waiting for dust to accrue...');
+  let ticks = 0;
   const dustBalance = await Rx.firstValueFrom(
     wallet.state().pipe(
+      Rx.throttleTime(2_000),
+      Rx.tap((s) => {
+        ticks += 1;
+        if (ticks % 5 === 1) {
+          logger.info(`Dust accruing: ${s.dust.balance(new Date())}`);
+        }
+      }),
       Rx.filter((s) => s.dust.balance(new Date()) > 0n),
       Rx.map((s) => s.dust.balance(new Date())),
     ),
