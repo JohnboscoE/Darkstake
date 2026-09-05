@@ -97,15 +97,20 @@ export const waitForNight = async (
         const synced = shielded && unshielded && dust;
         reported += 1;
 
-        if (synced && balance === 0n) {
+        // Only the unshielded scan is evidence about NIGHT. Shielded and dust
+        // scan from genesis and lag by minutes, but they hold no NIGHT and
+        // cannot change this answer -- so waiting for them before reporting
+        // just hides a conclusion that is already final.
+        if (unshielded && balance === 0n) {
           // Scanning finished and there is nothing here. Left unsaid, this is
           // indistinguishable from still-scanning, and the process waits
           // forever either way. Warn on first sight, then occasionally.
           if (reported === 1 || reported % 15 === 0) {
             logger.warn(
-              `Wallet is fully synced and holds 0 NIGHT at ${unshieldedAddressOf(state.unshielded)} ` +
-                `on network '${getNetworkId()}'. The funds have not arrived, or went to another network. ` +
-                `Re-run with --faucet to request some.`,
+              `The unshielded scan is COMPLETE and holds 0 NIGHT at ` +
+                `${unshieldedAddressOf(state.unshielded)} on network '${getNetworkId()}'. ` +
+                `This is final -- waiting longer will not change it; shielded/dust are still ` +
+                `scanning but hold no NIGHT. Fund this address, or re-run with --faucet.`,
             );
           }
         } else if (reported % 5 === 1) {
