@@ -18,6 +18,8 @@ import { type FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
 import * as Generated from '../../../contract/managed/prediction-market/contract/index.js';
 import { createWitnesses, type PMPrivateState } from '../../../contract/src/witnesses.js';
 
+export { Side, Phase, ledger, pureCircuits } from '../../../contract/managed/prediction-market/contract/index.js';
+export type { Ledger } from '../../../contract/managed/prediction-market/contract/index.js';
 export type { PMPrivateState };
 
 export const pmPrivateStateKey = 'pmPrivateState';

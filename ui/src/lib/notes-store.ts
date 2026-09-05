@@ -9,6 +9,12 @@
  * In the in-memory demo, losing notes on refresh is a curiosity. Against a real
  * contract it destroys a real position, which is why this exists.
  *
+ * The same is true of the staker's secret key, which is why it lives here too.
+ * `ownerHash` on every position is `hash(secretKey)`, so the key is what proves
+ * a position is yours at reveal and at claim. In the simulation it is a fixed
+ * constant per identity; against a real contract it is generated once per market
+ * and never regenerated, because a new key is a new identity with no positions.
+ *
  * Storage is keyed by contract address, so notes from different markets (and
  * from the simulation, which uses a sentinel address) cannot collide.
  *
@@ -106,6 +112,51 @@ export const appendNote = (contractAddress: string, identityId: string, note: St
   return saveNotes(contractAddress, identityId, next);
 };
 
+const secretKeyFor = (contractAddress: string): string =>
+  `${KEY_PREFIX}${contractAddress}:secret`;
+
+/**
+ * The staker's secret key for one market, generated on first use.
+ *
+ * Per market rather than per device, deliberately. The key used to deploy is
+ * the resolver -- the only account that can ever close and resolve that market
+ * -- so it must stay bound to the address it deployed. Reusing one key across
+ * markets would make every market you joined resolvable by the same secret,
+ * which is a worse default than a key you have to export per market.
+ *
+ * If storage is unavailable the key is still returned, so the session works;
+ * it just will not survive a reload, and `secretKeyPersisted` reports that.
+ */
+export const loadOrCreateSecretKey = (contractAddress: string): Uint8Array => {
+  const existing = safeGet(secretKeyFor(contractAddress));
+  if (existing !== null && /^[0-9a-f]{64}$/.test(existing)) {
+    return fromHex(existing);
+  }
+  const fresh = new Uint8Array(32);
+  crypto.getRandomValues(fresh);
+  safeSet(secretKeyFor(contractAddress), toHex(fresh));
+  return fresh;
+};
+
+/** True when the key for this market survived, or will survive, a reload. */
+export const secretKeyPersisted = (contractAddress: string): boolean =>
+  safeGet(secretKeyFor(contractAddress)) !== null;
+
+/**
+ * Adopts a secret key exported from elsewhere -- the CLI's `.deployments` file,
+ * or another browser. This is how a resolver key reaches the UI: the market is
+ * deployed by the CLI, which writes the key to disk, and only the holder of
+ * that key can close or resolve it.
+ */
+export const importSecretKey = (contractAddress: string, hex: string): Uint8Array => {
+  const clean = hex.trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{64}$/.test(clean)) {
+    throw new Error('A secret key is 64 hex characters (32 bytes).');
+  }
+  safeSet(secretKeyFor(contractAddress), clean);
+  return fromHex(clean);
+};
+
 /**
  * Exports every note for a market as JSON.
  *
@@ -118,6 +169,9 @@ export const exportNotes = (contractAddress: string, identityIds: string[]): str
     {
       contractAddress,
       exportedAt: new Date().toISOString(),
+      // The notes are worthless without the key that proves the positions are
+      // yours, so an export that omitted it would not actually be a backup.
+      secretKey: safeGet(secretKeyFor(contractAddress)),
       identities: Object.fromEntries(
         identityIds.map((id) => [
           id,

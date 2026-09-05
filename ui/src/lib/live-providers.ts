@@ -16,7 +16,6 @@
  *      transaction can pay its fee
  */
 import { type ConnectedAPI, type InitialAPI } from '@midnight-ntwrk/dapp-connector-api';
-import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { type NetworkId, setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -43,8 +42,8 @@ import {
 } from 'rxjs';
 
 import { inMemoryPrivateStateProvider } from './private-state-provider';
+import { createZkConfigProvider, getProofServerUrl } from './zk-config';
 import {
-  type PMCircuitKeys,
   type PMPrivateState,
   type PMProviders,
   type PrivateStateId,
@@ -156,24 +155,37 @@ export const initializeLiveProviders = async (): Promise<LiveConnection> => {
   const connectedAPI = await connectToWallet(networkId);
   const config = await connectedAPI.getConfiguration();
 
-  const proofServerUri = config.proverServerUri;
+  // Lace is the authority on which proof server to use, since it is the one
+  // that has to reach it. `VITE_PROOF_SERVER_URL` is a fallback for a build
+  // that ships its own (a tunnelled devcontainer, say) rather than an override:
+  // a wallet that named one knows better than a compile-time constant.
+  const proofServerUri = config.proverServerUri || getProofServerUrl();
   if (!proofServerUri) {
     throw new Error(
-      'Lace reported no proof server. Start a local Midnight proof server and configure Lace to use it.',
+      'Lace reported no proof server, and this build has none configured. Start a local Midnight proof server and point Lace at it.',
     );
   }
 
   const shieldedAddresses = await connectedAPI.getShieldedAddresses();
-  const zkConfigProvider = new FetchZkConfigProvider<PMCircuitKeys>(
-    window.location.origin,
-    fetch.bind(window),
-  );
+  // Serves this origin's `public/keys` and `public/zkir`. Shared with the rest
+  // of the app so there is one description of that layout, not two.
+  const zkConfigProvider = createZkConfigProvider();
 
   const providers: PMProviders = {
     privateStateProvider: inMemoryPrivateStateProvider<PrivateStateId, PMPrivateState>(),
     zkConfigProvider,
     proofProvider: httpClientProofProvider(proofServerUri, zkConfigProvider),
-    publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri),
+    // The third argument is not optional in practice. The provider defaults it
+    // to `ws.WebSocket` from `isomorphic-ws`, whose *browser* build has only a
+    // default export -- so the named import is `undefined` here and every
+    // subscription silently has no transport. Rollup says so at build time
+    // ("WebSocket is not exported by isomorphic-ws/browser.js") and then bundles
+    // it anyway. Passing the platform's own constructor is the whole fix.
+    publicDataProvider: indexerPublicDataProvider(
+      config.indexerUri,
+      config.indexerWsUri,
+      WebSocket,
+    ),
     walletProvider: {
       getCoinPublicKey: () => shieldedAddresses.shieldedCoinPublicKey,
       getEncryptionPublicKey: () => shieldedAddresses.shieldedEncryptionPublicKey,

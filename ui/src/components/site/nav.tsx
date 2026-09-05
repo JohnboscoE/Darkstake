@@ -46,7 +46,7 @@ export function Nav() {
 
         <div className="flex items-center gap-2">
           <Button size="sm" className="hidden sm:inline-flex" asChild>
-            <a href="#/app">
+            <a href="#/live">
               <Play />
               Launch app
             </a>
@@ -76,13 +76,18 @@ export function Nav() {
                 ))}
               </div>
               <Button className="mt-8 w-full" size="lg" asChild>
-                <a href="#/app">
+                <a href="#/live">
                   <Play />
                   Launch app
                 </a>
               </Button>
-              <p className="mt-3 text-center text-xs text-muted-foreground">
-                Runs the real contract in your browser. No real value at stake.
+              <p className="mt-3 text-center text-xs leading-relaxed text-muted-foreground">
+                Real transactions on Midnight testnet — needs the Lace wallet.{' '}
+                <SheetClose asChild>
+                  <a href="#/app" className="underline underline-offset-4">
+                    Run it without a wallet
+                  </a>
+                </SheetClose>
               </p>
             </SheetContent>
           </Sheet>

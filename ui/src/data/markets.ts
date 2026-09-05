@@ -1,9 +1,16 @@
 /**
- * Placeholder market data for the landing page.
+ * Market copy for the landing page.
  *
- * These are illustrative, NOT real markets. Once the Midnight indexer is wired
- * up this module gets replaced by a query against deployed market contracts
- * (one contract instance per market -- see the build spec).
+ * Exactly one of these is real: the entry flagged `live` is the market this
+ * build has deployed, and its counts and phase are replaced at runtime by a
+ * query against the indexer (`useMarketSummary`). The rest are illustrative,
+ * are labelled as such on the card, and lead to the in-browser simulation.
+ *
+ * Note that the question text lives here rather than on-chain. The contract
+ * stores no question: one deployed contract IS one market, and what it is a
+ * market *about* is an agreement between the resolver and the participants,
+ * published off-chain. Putting the string on-chain would cost gas to say
+ * something the resolver could contradict anyway.
  *
  * Note what is and is not in this shape: there is no `volume` and no `price`.
  * That is deliberate. On Darkstake the only public aggregate is how many
@@ -25,6 +32,12 @@ export interface Market {
   source: string;
   closesAt: string;
   phase: Phase;
+  /**
+   * True for the one market backed by a deployed contract. Its figures below
+   * are placeholders that the live query overwrites -- they show only when the
+   * indexer cannot be reached.
+   */
+  live?: boolean;
   /** Public: how many positions sit on each side. Never how large they are. */
   yesPositions: number;
   noPositions: number;
@@ -61,8 +74,9 @@ export const MARKETS: Market[] = [
     source: 'FOMC statement',
     closesAt: '16 Dec 2026',
     phase: 'OPEN',
-    yesPositions: 481,
-    noPositions: 194,
+    live: true,
+    yesPositions: 0,
+    noPositions: 0,
   },
   {
     id: 'starship-refuel',

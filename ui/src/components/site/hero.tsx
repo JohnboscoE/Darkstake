@@ -35,13 +35,13 @@ export function Hero() {
 
         <div className="mt-10 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row">
           <Button size="lg" className="w-full sm:w-auto" asChild>
-            <a href="#/app">
-              Try the live contract
+            <a href="#/live">
+              Open on Midnight
               <ArrowRight />
             </a>
           </Button>
           <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
-            <a href="#markets">Browse markets</a>
+            <a href="#/app">Try it without a wallet</a>
           </Button>
         </div>
 

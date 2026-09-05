@@ -1,15 +1,42 @@
 import { useMemo, useState } from 'react';
 import { Section, SectionHeading } from '@/components/site/section';
 import { MarketCard } from '@/components/site/market-card';
-import { CATEGORIES, MARKETS } from '@/data/markets';
+import { CATEGORIES, MARKETS, type Market } from '@/data/markets';
+import { useMarketSummary } from '@/hooks/use-market-summary';
 import { cn } from '@/lib/utils';
+
+const PHASE_NAME = ['OPEN', 'REVEAL', 'RESOLVED'] as const;
 
 export function Markets() {
   const [active, setActive] = useState<string>('All');
+  const summary = useMarketSummary();
+
+  /**
+   * The deployed market's card, with its figures replaced by what the chain
+   * actually says. Everything else keeps its illustrative numbers and its
+   * "not deployed" label.
+   *
+   * The live card sorts first: the one real market being buried among seven
+   * mockups is the fastest way to make a working contract look like a mockup
+   * too.
+   */
+  const markets: Market[] = useMemo(() => {
+    const merged = MARKETS.map((market): Market => {
+      if (!market.live || summary === null) return market;
+      return {
+        ...market,
+        phase: PHASE_NAME[summary.phase] ?? market.phase,
+        yesPositions: summary.yesPositions,
+        noPositions: summary.noPositions,
+        winningSide: summary.winningSide ?? undefined,
+      };
+    });
+    return merged.sort((a, b) => Number(b.live ?? false) - Number(a.live ?? false));
+  }, [summary]);
 
   const visible = useMemo(
-    () => (active === 'All' ? MARKETS : MARKETS.filter((m) => m.category === active)),
-    [active],
+    () => (active === 'All' ? markets : markets.filter((m) => m.category === active)),
+    [active, markets],
   );
 
   return (
@@ -55,9 +82,20 @@ export function Markets() {
         </p>
       )}
 
-      <p className="mt-8 text-center text-xs text-muted-foreground/70">
-        Illustrative markets for the testnet demo. Not financial advice, and nothing here settles in
-        real value.
+      <p className="mt-8 text-center text-xs leading-relaxed text-muted-foreground/70">
+        {summary === null ? (
+          <>
+            One market on this page is backed by a deployed contract; the rest are illustrative and
+            open the no-wallet demo. Nothing here settles in real value.
+          </>
+        ) : (
+          <>
+            The card marked <span className="text-accent">On-chain</span> is reading live from the
+            Midnight indexer — contract{' '}
+            <span className="font-mono">{summary.contractAddress.slice(0, 16)}…</span>. The rest are
+            illustrative. Nothing here settles in real value.
+          </>
+        )}
       </p>
     </Section>
   );

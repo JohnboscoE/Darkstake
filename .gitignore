@@ -13,15 +13,19 @@ dist/
 # repo's own dev machine cannot produce keys at all (zkir needs bmi2/adx).
 # 120 KB of generated JS is a cheap price for a deployable site.
 #
-# The heavy, inert parts stay out. Proving keys are ~18 MB and do nothing
-# without a proof server, so they are fetched from the proving-keys workflow
-# artifact when they are actually needed.
+# The build tree's copy stays out: it is ~18 MB, and everything that needs it
+# reads the copy under ui/public instead. Fetch it from the proving-keys
+# workflow artifact when rebuilding the contract.
 contract/managed/prediction-market/keys/
 contract/managed/prediction-market/zkir/
 
-# Proving keys copied into the UI for FetchZkConfigProvider to serve.
-ui/public/keys/
-ui/public/zkir/
+# ui/public/keys and ui/public/zkir ARE committed. They used to be ignored on
+# the grounds that a proving key is inert without a proof server -- true then,
+# wrong now. `#/live` proves every circuit for real, and the proof server it
+# uses is the user's own, reached through Lace. `FetchZkConfigProvider` loads
+# the keys from THIS origin over HTTP, so a deployment without them serves a
+# live mode that cannot prove anything. 19 MB of static files is the price of
+# the site working from a fresh clone, which is how Vercel builds it.
 
 # Generated wallets. The seed in here IS the wallet -- never commit it.
 wallet/.wallets/
