@@ -1,0 +1,20 @@
+{
+  "name": "darkstake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shielded prediction market on Midnight",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "contract",
+    "cli"
+  ],
+  "scripts": {
+    "compile": "cd contract && compact compile prediction-market.compact managed/prediction-market",
+    "test": "cd contract && npm test",
+    "deploy": "cd cli && npm run deploy --"
+  },
+  "overrides": {
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  }
+}

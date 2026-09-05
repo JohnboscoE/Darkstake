@@ -144,6 +144,28 @@ and why `.devcontainer/` exists: a Codespace can do both.
   ledger of who is owed what, on terms anyone can verify.
 - Commit timing is observable, as described above.
 
+## Why contract/ and cli/ are one npm workspace
+
+They must share a single copy of `@midnight-ntwrk/onchain-runtime-v3`. Separate
+`node_modules` gave `contract/` version 3.1.1 and `cli/` version 3.0.0, so the
+generated contract was built by one WASM instance and read by another, and
+deployment died with:
+
+```
+expected instance of ContractMaintenanceAuthority
+```
+
+The error names a class, not the real problem, and points at neither package.
+`ui/vite.config.ts` documents the same hazard from the bundler side, where it
+surfaces as `expected instance of ChargedState`. Any `expected instance of X`
+from the Midnight runtime should be read as "two copies of the WASM module",
+not as a type error.
+
+The root `overrides` pins the runtime to 3.0.0, the version `midnight-js-protocol`
+requires. `ui/` is deliberately NOT a workspace: it pins the runtime through
+Vite aliases instead, which is a different mechanism for the same goal, and
+folding it in would break that.
+
 ## Build notes
 
 See `midnight-prediction-market-SPEC.md` for the full build spec, including a
