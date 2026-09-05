@@ -136,8 +136,8 @@ assert behaviour are exactly what would run on-chain.
 
 | | |
 |---|---|
-| Contract | `7577ecf6fda6015f87c8efa9341da537c7fcf11a6ac0317daa904e97f8812bcf` |
-| Block | 735676 |
+| Contract | `0ce149b8cd281c89d4a0ec55e4f56982fc3d934770345ab438352efd30bfc508` |
+| Block | 738714 |
 
 See [DEPLOYMENTS.md](DEPLOYMENTS.md) for the transaction hashes and a command
 that verifies all of it against the public indexer.
