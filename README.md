@@ -127,15 +127,25 @@ assert behaviour are exactly what would run on-chain.
 
 ## Current status
 
-**Working:** the circuit compiles and behaves; proving keys are generated in CI;
-the browser demo drives the real contract; a wallet can be generated and funded;
-the deploy CLI typechecks.
+**Deployed and live on Midnight preview.**
 
-**Not yet:** nothing is deployed to a live network. Deploying needs a proof
-server, and proving needs a CPU with the `bmi2`/`adx` instructions that this
-project's dev machine (a 2011 Sandy Bridge) lacks — `zkir` dies there with
-SIGILL. That is why proving keys come from the `proving-keys` GitHub workflow
-and why `.devcontainer/` exists: a Codespace can do both.
+| | |
+|---|---|
+| Contract | `7577ecf6fda6015f87c8efa9341da537c7fcf11a6ac0317daa904e97f8812bcf` |
+| Block | 735676 |
+
+See [DEPLOYMENTS.md](DEPLOYMENTS.md) for the transaction hashes and a command
+that verifies all of it against the public indexer.
+
+**Working:** the circuit compiles and behaves; proving keys generate in CI and
+in the devcontainer, byte-identically; the contract is deployed, with real
+proofs produced by a real proof server and fees paid in dust from a funded
+wallet; the browser demo drives the real compiled circuit.
+
+**In progress:** the deployed site still runs the demo in memory rather than
+against the deployed contract. The browser provider stack (Lace wallet, indexer,
+proof and ZK-config providers) is written; wiring it to the address above is the
+remaining step.
 
 **v1 limitations, stated plainly:**
 
@@ -143,6 +153,9 @@ and why `.devcontainer/` exists: a Codespace can do both.
 - Entitlements are recorded, not paid. There is no escrow; settlement is a
   ledger of who is owed what, on terms anyone can verify.
 - Commit timing is observable, as described above.
+- Interacting on-chain needs the Lace extension, a local proof server and
+  preview NIGHT. That is the standard Midnight dapp requirement, not a quirk of
+  this project, but it is real friction.
 
 ## Why contract/ and cli/ are one npm workspace
 
