@@ -115,9 +115,14 @@ circuit, not a string invented by the front end.
 ## Running it
 
 ```bash
-cd ui && npm install && npm run dev     # http://localhost:3000, #/app for the demo
+cd ui && npm install && npm run dev     # http://localhost:3000
 cd contract && npm test                 # adversarial suite against the real contract
 ```
+
+`#/app` needs nothing installed. `#/live` needs the Lace extension set to the
+same network as `VITE_NETWORK_ID`, a proof server Lace can reach, and preview
+NIGHT that has been registered for dust generation — dust pays fees, NIGHT does
+not. See `ui/.env.example`.
 
 The demo runs the real compiled circuit in the browser through
 `@midnight-ntwrk/compact-runtime`. What is simulated is the *network*, not the
@@ -137,15 +142,24 @@ assert behaviour are exactly what would run on-chain.
 See [DEPLOYMENTS.md](DEPLOYMENTS.md) for the transaction hashes and a command
 that verifies all of it against the public indexer.
 
-**Working:** the circuit compiles and behaves; proving keys generate in CI and
-in the devcontainer, byte-identically; the contract is deployed, with real
-proofs produced by a real proof server and fees paid in dust from a funded
-wallet; the browser demo drives the real compiled circuit.
+The site has two modes, and both run the same compiled circuits:
 
-**In progress:** the deployed site still runs the demo in memory rather than
-against the deployed contract. The browser provider stack (Lace wallet, indexer,
-proof and ZK-config providers) is written; wiring it to the address above is the
-remaining step.
+| Route | What it does | Needs |
+|---|---|---|
+| `#/live` | Real transactions against the contract above — proved by a proof server, signed by Lace, settled in a block, read back from the indexer | Lace, a proof server, preview NIGHT |
+| `#/app` | The same circuits executed in memory, unproven | nothing |
+
+The landing page also reads the deployed market's real position counts and phase
+straight from the public indexer. That query needs no wallet, so the on-chain
+numbers are visible to a visitor who has installed nothing.
+
+From `#/live` you can also deploy a market of your own, which makes you its
+resolver and lets you drive the whole lifecycle — commit, close, reveal, resolve,
+claim — end to end.
+
+**Reviewed:** [contract/SECURITY-REVIEW.md](contract/SECURITY-REVIEW.md) works
+through the contract against the Midnight Expert review checklists, including
+two findings that are open and accepted for v1.
 
 **v1 limitations, stated plainly:**
 
@@ -153,6 +167,9 @@ remaining step.
 - Entitlements are recorded, not paid. There is no escrow; settlement is a
   ledger of who is owed what, on terms anyone can verify.
 - Commit timing is observable, as described above.
+- All positions opened by one key share an `ownerHash`, so an observer can group
+  them within a market — which partly undoes splitting a stake to hide its size.
+  See finding 2 in the security review for the fix and what it costs.
 - Interacting on-chain needs the Lace extension, a local proof server and
   preview NIGHT. That is the standard Midnight dapp requirement, not a quirk of
   this project, but it is real friction.

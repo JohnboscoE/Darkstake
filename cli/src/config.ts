@@ -40,7 +40,10 @@ const urlsFor = (network: NetworkName) => ({
   indexerWS: `wss://indexer.${network}.midnight.network/api/v4/graphql/ws`,
   node: `https://rpc.${network}.midnight.network`,
   nodeWS: `wss://rpc.${network}.midnight.network`,
-  faucet: `https://midnight-tmnight-${network}.nethermind.dev/`,
+  // The Nethermind host this used to point at now answers 503. This is the
+  // one linked from the Midnight docs, and the one that actually funded this
+  // project's wallet.
+  faucet: `https://faucet.${network}.midnight.network/`,
 });
 
 /**
