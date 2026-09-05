@@ -24,6 +24,13 @@ export function YourClient(props: Props) {
   const { ledger, notes, isResolver } = props;
   const [stake, setStake] = useState('250000');
 
+  // Counted across the whole ledger, not just this identity's notes: the
+  // resolver is deciding for everyone, and resolving is irreversible for any
+  // position still sealed.
+  const allPositions = Array.from(ledger.positions);
+  const totalPositions = allPositions.length;
+  const unrevealedCount = allPositions.filter(([, p]) => !p.revealed).length;
+
   const parsedStake = (() => {
     try {
       const n = BigInt(stake.replace(/[^0-9]/g, '') || '0');
@@ -178,6 +185,14 @@ export function YourClient(props: Props) {
             </p>
 
             <ResolverBlock show={isResolver}>
+              {unrevealedCount > 0 && (
+                <p className="mb-2.5 text-xs leading-relaxed text-no">
+                  {unrevealedCount} of {totalPositions}{' '}
+                  {totalPositions === 1 ? 'position has' : 'positions have'} not revealed.
+                  Resolving now forfeits them permanently: they fund nothing and can claim
+                  nothing. Reveal first unless you mean to demonstrate exactly that.
+                </p>
+              )}
               <p className="mb-2 text-xs text-muted-foreground">Report the outcome:</p>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -212,6 +227,11 @@ export function YourClient(props: Props) {
                   const won = props.entitlement(n.positionId) > 0n;
                   const claimed = props.positionClaimed(n.positionId);
                   const side = props.positionSide(n.positionId);
+                  // A position that never revealed is forfeit: claimEntitlement
+                  // asserts `revealed`, so the button could only ever fail.
+                  // Offering it anyway reads as a bug in the contract rather
+                  // than the rule the contract exists to enforce.
+                  const revealed = props.positionRevealed(n.positionId);
                   return (
                     <li key={String(n.positionId)} className="rounded-lg border border-border p-3">
                       <div className="mb-2 flex items-center justify-between gap-2 text-xs">
@@ -221,7 +241,9 @@ export function YourClient(props: Props) {
                             {side === Side.YES ? 'YES' : 'NO'}
                           </span>
                         </span>
-                        {won ? (
+                        {!revealed ? (
+                          <Badge variant="no">forfeited</Badge>
+                        ) : won ? (
                           <span className="font-mono text-yes">
                             {fmt(props.entitlement(n.positionId))}
                           </span>
@@ -232,11 +254,22 @@ export function YourClient(props: Props) {
                       <Button
                         size="sm"
                         className="w-full"
-                        disabled={claimed}
+                        disabled={claimed || !revealed}
                         onClick={() => props.onClaim(n.positionId)}
                       >
-                        {claimed ? 'Claimed' : 'Claim entitlement'}
+                        {claimed
+                          ? 'Claimed'
+                          : !revealed
+                            ? 'Never revealed — forfeited'
+                            : 'Claim entitlement'}
                       </Button>
+                      {!revealed && (
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                          This stake was never revealed before the market resolved, so it funded
+                          nothing and can claim nothing. Reveal-or-forfeit is the rule that stops
+                          losers from staying silent to avoid funding the pool.
+                        </p>
+                      )}
                     </li>
                   );
                 })}
