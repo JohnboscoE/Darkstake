@@ -1,0 +1,37 @@
+{
+  "name": "Darkstake",
+
+  // Node 24: undici (pulled in by the Midnight SDK) declares engines >=22.19,
+  // and the dev machine's 22.17 warns on every install.
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-24-bookworm",
+
+  // The proof server is a Docker image, so the container needs its own Docker.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "forwardPorts": [6300, 3000],
+  "portsAttributes": {
+    "6300": {
+      "label": "Midnight proof server",
+      "onAutoForward": "silent"
+    },
+    "3000": {
+      "label": "Darkstake UI",
+      "onAutoForward": "openPreview"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  // Bring the proof server up on every start, not just on create.
+  "postStartCommand": "docker compose -f proof-server/docker-compose.yml up -d",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  },
+
+  "remoteUser": "node"
+}
