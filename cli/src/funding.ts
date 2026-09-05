@@ -29,15 +29,36 @@ const isSynced = (state: FacadeState): boolean =>
   isComplete(state.dust.state.progress) &&
   isComplete(state.unshielded.progress);
 
+/**
+ * Waits for dust to become spendable.
+ *
+ * Gates on the dust scan plus a positive dust balance, not on full sync: dust
+ * is what actually pays the fee, and the shielded scan is irrelevant to
+ * submitting a contract deployment. Reports progress, because this is the
+ * longest wait in the whole flow and silence here is indistinguishable from a
+ * hang.
+ */
 export const syncWallet = (logger: Logger, wallet: WalletFacade, throttleTime = 2_000): Promise<FacadeState> => {
-  logger.info('Syncing wallet...');
+  logger.info('Waiting for spendable dust...');
+  let reported = 0;
   return Rx.firstValueFrom(
     wallet.state().pipe(
       Rx.throttleTime(throttleTime),
-      Rx.filter(isSynced),
+      Rx.tap((state) => {
+        reported += 1;
+        if (reported % 5 === 1) {
+          logger.info(
+            `Waiting for dust: dust=${state.dust.balance(new Date())} ` +
+              `sync{shielded=${isComplete(state.shielded.state.progress)} ` +
+              `unshielded=${isComplete(state.unshielded.progress)} ` +
+              `dust=${isComplete(state.dust.state.progress)}}`,
+          );
+        }
+      }),
+      Rx.filter((state) => isComplete(state.dust.state.progress) && state.dust.balance(new Date()) > 0n),
       Rx.tap((state) =>
         logger.info(
-          `Synced. unshielded=${JSON.stringify(state.unshielded.balances)} dust=${state.dust.balance(new Date())}`,
+          `Dust ready: ${state.dust.balance(new Date())} (unshielded=${JSON.stringify(state.unshielded.balances)})`,
         ),
       ),
     ),
@@ -120,7 +141,17 @@ export const waitForNight = async (
           );
         }
       }),
-      Rx.filter((state) => isSynced(state) && (state.unshielded.balances[tokenType.raw] ?? 0n) > 0n),
+      // Gate on the unshielded scan ONLY. Requiring full sync here is wrong and
+      // deadlocks: shielded and dust scan from genesis and can lag for a very
+      // long time, while neither holds NIGHT and neither can change this
+      // answer. Observed in practice -- balance=10000000000 with
+      // sync{shielded=false unshielded=true dust=false} waited indefinitely on
+      // funds that had already arrived.
+      Rx.filter(
+        (state) =>
+          isComplete(state.unshielded.progress) &&
+          (state.unshielded.balances[tokenType.raw] ?? 0n) > 0n,
+      ),
       Rx.tap((state) => logger.info(`NIGHT balance: ${state.unshielded.balances[tokenType.raw]}`)),
       Rx.map((state) => state.unshielded),
     ),
