@@ -80,16 +80,14 @@ jobs:
           COMPACTC="$(command -v compactc || find "$HOME/.compact" -maxdepth 6 -type f -name 'compactc*' -perm -u+x 2>/dev/null | head -1)"
           {
             echo "update_rc=$UPDATE_RC"
-            echo "update_tail: $(tail -3 update.log | tr '
-' ' ')"
+            echo "update_tail: $(tail -3 update.log | paste -sd' ')"
             echo "compactc=$COMPACTC"
             if [ -n "$COMPACTC" ]; then
               echo "version: $("$COMPACTC" --version 2>&1 | head -2) rc=$?"
               echo "langver: $("$COMPACTC" --language-version 2>&1 | head -2) rc=$?"
               echo "ldd: $(ldd "$COMPACTC" 2>&1 | grep -i 'not found' | head -5)"
             fi
-            echo "tree: $(find "$HOME/.compact" -maxdepth 3 2>/dev/null | head -25 | tr '
-' ' ')"
+            echo "tree: $(find "$HOME/.compact" -maxdepth 3 2>/dev/null | head -25 | paste -sd' ')"
           } > diag.txt 2>&1
           cat diag.txt
           echo "::error::DIAG $(paste -sd'|' diag.txt | cut -c1-2800)"
