@@ -10,10 +10,15 @@
  *
  * What is simulated is the *network*, not the contract: there is no proof
  * server, no indexer and no wallet, so circuits run unproven and state lives in
- * memory. (Proving keys cannot be generated on this machine anyway -- `zkir`
- * requires Haswell-era CPU instructions. See §0 of the build spec.) The circuit
- * logic, the disclosure boundary and the assert behaviour are all exactly what
- * would run on-chain.
+ * memory. The circuit logic, the disclosure boundary and the assert behaviour
+ * are all exactly what would run on-chain.
+ *
+ * Proving keys DO now exist -- built by the `proving-keys` GitHub workflow,
+ * since `zkir` needs bmi2/adx instructions this 2011 CPU lacks -- and are
+ * served from `public/keys/` via `zk-config.ts`. They change nothing here:
+ * keys feed a prover, and there is still no proof server to run one. Wiring
+ * this engine to real proofs means replacing the in-memory `CircuitContext`
+ * with the provider stack in `cli/`, not adding keys to this file.
  */
 import {
   CostModel,

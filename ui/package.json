@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "^0.16.0",
+    "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "^4.1.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-slot": "^1.2.3",

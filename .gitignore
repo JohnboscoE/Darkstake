@@ -16,3 +16,6 @@ ui/public/zkir/
 wallet/.wallets/
 cli/.deployments/
 cli/logs/
+
+# TypeScript incremental build cache.
+*.tsbuildinfo
