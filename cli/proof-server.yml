@@ -1,0 +1,21 @@
+# Proof server for the testkit-managed path.
+#
+# @midnight-ntwrk/testkit-js starts its own proof server via testcontainers and
+# looks for exactly this filename in process.cwd(), with a service named
+# `proof-server` on port 6300. Without it, testEnv.start() fails before any
+# wallet or contract code runs.
+#
+# The port is deliberately unpublished (container port only, no host mapping):
+# testcontainers assigns an ephemeral host port and discovers it. Pinning 6300
+# on the host would collide with the devcontainer's own proof server, which
+# postStartCommand already binds there.
+#
+# If you would rather not have the CLI manage a container at all -- pointing at
+# the devcontainer's proof server, or a remote one -- skip this entirely:
+#   npm run deploy -- --proof-server http://localhost:6300
+services:
+  proof-server:
+    image: midnightntwrk/proof-server:8.0.3
+    command: ["midnight-proof-server", "--network", "${MIDNIGHT_NETWORK:-preview}"]
+    ports:
+      - "6300"

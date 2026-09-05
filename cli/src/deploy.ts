@@ -6,7 +6,13 @@
 // resolver (see the contract's `constructor`). So the seed used here is the seed
 // that will later be able to call closeMarket and resolve -- keep it.
 //
-// Requires a reachable proof server. The testkit starts one in Docker for you.
+// Requires a reachable proof server, one of two ways:
+//   --proof-server <url>   point at one already running (devcontainer, remote)
+//   (omitted)              testkit starts its own from cli/proof-server.yml,
+//                          which needs a working Docker daemon
+//
+// The seed can come from MIDNIGHT_WALLET_SEED, which is what to use on a cloud
+// box so it never reaches shell history.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -21,7 +27,7 @@ import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import pino from 'pino';
 
-import { configFor } from './config.js';
+import { configFor, environmentFor } from './config.js';
 import { DarkstakeWalletProvider } from './wallet-provider.js';
 import { registerForDust, syncWallet, waitForNight } from './funding.js';
 import {
@@ -43,10 +49,17 @@ type Args = {
   seedFile: string | null;
   seed: string | null;
   faucet: boolean;
+  proofServer: string | null;
 };
 
 const parseArgs = (argv: string[]): Args => {
-  const args: Args = { network: 'preview', seedFile: null, seed: null, faucet: false };
+  const args: Args = {
+    network: 'preview',
+    seedFile: null,
+    seed: null,
+    faucet: false,
+    proofServer: process.env.MIDNIGHT_PROOF_SERVER ?? null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = (): string => {
@@ -59,21 +72,55 @@ const parseArgs = (argv: string[]): Args => {
       case '--seed-file': args.seedFile = value(); break;
       case '--seed': args.seed = value(); break;
       case '--faucet': args.faucet = true; break;
+      case '--proof-server': args.proofServer = value(); break;
       default: throw new Error(`unknown argument: ${arg}`);
     }
   }
   return args;
 };
 
+const assertSeedShape = (seed: string, source: string): string => {
+  if (!/^[0-9a-fA-F]{64}$/.test(seed)) {
+    throw new Error(`seed from ${source} must be 64 hex characters (32 bytes), got ${seed.length}`);
+  }
+  return seed.toLowerCase();
+};
+
+/**
+ * Seed resolution, in order of preference:
+ *   1. MIDNIGHT_WALLET_SEED   -- a Codespaces/CI secret; never hits shell history
+ *   2. --seed                 -- convenient locally, but lands in shell history
+ *   3. --seed-file            -- explicit path
+ *   4. wallet/.wallets/<network>.json  -- what the wallet generator writes
+ *
+ * The env var is first because deploying happens on a cloud box: this repo's own
+ * dev machine cannot generate proofs, so the seed has to travel. A secret is the
+ * least bad way to move it.
+ */
 const readSeed = (args: Args): string => {
-  if (args.seed !== null) return args.seed;
+  const fromEnv = process.env.MIDNIGHT_WALLET_SEED;
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') {
+    return assertSeedShape(fromEnv.trim(), 'MIDNIGHT_WALLET_SEED');
+  }
+  if (args.seed !== null) return assertSeedShape(args.seed, '--seed');
+
   const file = args.seedFile ?? path.resolve(here, '..', '..', 'wallet', '.wallets', `${args.network}.json`);
-  const parsed = JSON.parse(readFileSync(file, 'utf8')) as { seed?: string; network?: string };
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    throw new Error(
+      `no seed available. Set MIDNIGHT_WALLET_SEED, pass --seed/--seed-file, or generate one:\n` +
+        `  cd wallet && node generate-wallet.mjs --network ${args.network}\n` +
+        `(looked for ${file})`,
+    );
+  }
+  const parsed = JSON.parse(raw) as { seed?: string; network?: string };
   if (typeof parsed.seed !== 'string') throw new Error(`${file} has no "seed" field`);
   if (parsed.network !== undefined && parsed.network !== args.network) {
     throw new Error(`${file} is a ${parsed.network} wallet but --network is ${args.network}`);
   }
-  return parsed.seed;
+  return assertSeedShape(parsed.seed, file);
 };
 
 const main = async (): Promise<void> => {
@@ -82,12 +129,19 @@ const main = async (): Promise<void> => {
   const seed = readSeed(args);
 
   const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
-  const testEnv = config.getEnvironment(logger);
+
+  // Two ways to get a proof server. An explicit URL points at one that is
+  // already running -- the devcontainer's, or a remote one -- and avoids
+  // testcontainers entirely. Otherwise testkit starts its own from
+  // cli/proof-server.yml, which needs a working Docker daemon.
+  const testEnv = args.proofServer === null ? config.getEnvironment(logger) : null;
   let walletProvider: DarkstakeWalletProvider | undefined;
 
   try {
-    // Starts the proof server container and hands back the resolved URLs.
-    const env = await testEnv.start();
+    const env =
+      args.proofServer === null
+        ? await testEnv!.start()
+        : environmentFor(config.network, args.proofServer);
     logger.info(`Environment ready on ${config.network} (proof server ${env.proofServer})`);
 
     walletProvider = await DarkstakeWalletProvider.build(logger, env, seed);
@@ -152,7 +206,7 @@ const main = async (): Promise<void> => {
     logger.info(`Wrote ${out} (contains the resolver secret key -- gitignored)`);
   } finally {
     if (walletProvider) await walletProvider.stop().catch(() => undefined);
-    await testEnv.shutdown().catch(() => undefined);
+    if (testEnv) await testEnv.shutdown().catch(() => undefined);
   }
 };
 

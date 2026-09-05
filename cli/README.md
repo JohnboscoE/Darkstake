@@ -7,9 +7,26 @@ npm install
 npm run deploy -- --network preview
 ```
 
-The seed is read from `../wallet/.wallets/<network>.json` by default; override
-with `--seed-file <path>` or `--seed <64 hex>`. Pass `--faucet` to ask the
-network faucet for NIGHT before deploying (an outbound request, so it is opt-in).
+Seed resolution, in order: `MIDNIGHT_WALLET_SEED`, then `--seed <64 hex>`, then
+`--seed-file <path>`, then `../wallet/.wallets/<network>.json`. Use the env var
+on a cloud box -- it never reaches shell history. Pass `--faucet` to ask the
+network faucet for NIGHT first (an outbound request, so it is opt-in).
+
+## Proof server
+
+Two options:
+
+```bash
+npm run deploy -- --proof-server http://localhost:6300   # one already running
+npm run deploy                                            # testkit starts its own
+```
+
+The first skips testcontainers entirely and is what to use in the devcontainer,
+which already has a proof server on :6300, or against a remote prover. The
+second needs a working Docker daemon and reads `cli/proof-server.yml` -- testkit
+looks for exactly that filename in the working directory, with a service named
+`proof-server` on port 6300. Without that file `testEnv.start()` fails before
+any wallet or contract code runs.
 
 ## ⚠️ This cannot run on the current dev machine
 
