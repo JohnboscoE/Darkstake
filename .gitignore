@@ -32,6 +32,14 @@ wallet/.wallets/
 cli/.deployments/
 cli/logs/
 
+# LevelDB store written by levelPrivateStateProvider. It holds the contract's
+# private state AND the contract-maintenance signing key, encrypted with
+# PRIVATE_STATE_PASSWORD -- which defaults to a constant written in deploy.ts.
+# Committing it therefore publishes a signing key whose password is in the same
+# repository. The path depends on the cwd the deploy ran from, so match it
+# anywhere rather than at one location.
+midnight-level-db/
+
 # TypeScript incremental build cache.
 *.tsbuildinfo
 
