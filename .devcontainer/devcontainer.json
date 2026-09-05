@@ -3,7 +3,13 @@
 
   // Node 24: undici (pulled in by the Midnight SDK) declares engines >=22.19,
   // and the dev machine's 22.17 warns on every install.
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-24-bookworm",
+  //
+  // Tag is "24-bookworm", NOT "1-24-bookworm". The 1-prefixed series stops at
+  // 1-22-bookworm, and naming a tag that does not exist fails the container
+  // build -- which Codespaces does not report as an error. It drops you into a
+  // recovery container with no node, no docker and no postCreateCommand, so the
+  // symptom looks like a broken setup script rather than a bad image name.
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24-bookworm",
 
   // The proof server is a Docker image, so the container needs its own Docker.
   "features": {
