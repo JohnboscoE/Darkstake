@@ -101,6 +101,53 @@ assertions covering:
 Every error the demo UI shows is a genuine failed `assert` from inside the
 circuit, not a string invented by the front end.
 
+## Demo walkthrough
+
+Roughly ninety seconds, in the order that makes the point fastest. Everything up
+to step 5 runs at `#/app` and needs **no wallet, no proof server and no tokens**,
+so it can be recorded on any machine.
+
+**1 · The problem** *(10s)* — landing page.
+On a transparent prediction market every stake is visible the moment it lands.
+Size is the signal worth money, and publishing it is what makes front-running
+possible.
+
+**2 · Two positions, indistinguishable** *(25s)* — `#/app`.
+Commit **250,000** as the Whale. Switch identity, commit **40** as the Minnow.
+Now read the public ledger: two rows, same side, same shape, both showing
+`shielded`. Nothing on-chain separates a whale from a minnow. This is the whole
+claim, and it is visible in one screenshot.
+
+**3 · Try to cheat** *(20s)* — still `#/app`.
+Close the book as the Resolver, then hit **Try 4× forgery** on the Whale's
+reveal. It is rejected with `stake != commitment` — a real `assert` from inside
+the circuit, not a string the UI made up. Switch to the Observer and try to
+close the market: `not the resolver`. Nothing is enforced by the front end.
+
+**4 · Settlement anyone can check** *(15s)*.
+Reveal, resolve, claim. Entitlement is `revealedStake × pool ÷ winningStakeTotal`
+— computed in the client, because Compact has no division operator. The contract
+publishes the terms rather than the answer, so any third party derives the same
+number from public state and can check it.
+
+**5 · It is actually deployed** *(15s)*.
+Run the curl from [DEPLOYMENTS.md](DEPLOYMENTS.md) on camera. It returns
+`ContractDeploy` at block 738714 from the public Midnight indexer — no wallet,
+no trust in this repository, five seconds. Then show `#/live`, which drives that
+same contract with real proofs through Lace.
+
+**6 · What the review changed** *(10s)*.
+Under v1, splitting a large stake across several positions did not actually hide
+the total: every position carried the same owner tag, so an observer grouped them
+and added the revealed parts back up. v2 blinds each tag separately. See
+[contract/SECURITY-REVIEW.md](contract/SECURITY-REVIEW.md).
+
+**A note on recording step 5's `#/live` half.** Proving happens on the machine
+running the proof server, and it is genuinely heavy — on older hardware Lace's
+initial wallet sync and the first proof both take real time. If that is the
+machine you are recording on, capture steps 1–4 and the indexer curl, which
+demonstrate the mechanism and the deployment without either.
+
 ## Repository layout
 
 | Path | What it is |
@@ -124,11 +171,13 @@ same network as `VITE_NETWORK_ID`, a proof server Lace can reach, and preview
 NIGHT that has been registered for dust generation — dust pays fees, NIGHT does
 not. See `ui/.env.example`.
 
-The demo runs the real compiled circuit in the browser through
-`@midnight-ntwrk/compact-runtime`. What is simulated is the *network*, not the
-contract: there is no proof server, indexer or wallet, so circuits run unproven
-and state lives in memory. The circuit logic, the disclosure boundary and the
-assert behaviour are exactly what would run on-chain.
+**About `#/app` specifically:** it runs the real compiled circuit in the browser
+through `@midnight-ntwrk/compact-runtime`. What is simulated is the *network*,
+not the contract — there is no proof server, indexer or wallet, so circuits run
+unproven and state lives in memory. The circuit logic, the disclosure boundary
+and the assert behaviour are exactly what would run on-chain, which is why every
+rejection it shows is a real `assert` from inside the circuit rather than a
+message the front end invented.
 
 ## Current status
 

@@ -44,5 +44,14 @@ midnight-level-db/
 *.tsbuildinfo
 
 # Local env overrides (proof server URL etc). .env.example is committed.
-.env.local
-.env.*.local
+#
+# Deliberately broad. `vercel env pull` writes whatever filename you give it,
+# and what it writes includes VERCEL_OIDC_TOKEN -- a live credential. A rule
+# that only covered `.env.local` would leave `vercel env pull .env.check`
+# committable, which is the mistake worth designing out rather than remembering.
+.env
+.env.*
+!.env.example
+
+# Written by `vercel link`. Holds the project and org ids.
+.vercel
