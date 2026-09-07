@@ -28,3 +28,16 @@ export const indexerUrls = (network: NetworkName = networkName()) => ({
   http: `https://indexer.${network}.midnight.network/api/v4/graphql`,
   ws: `wss://indexer.${network}.midnight.network/api/v4/graphql/ws`,
 });
+
+/**
+ * The deployed market to join, or null when this build has none.
+ *
+ * Lives here rather than in `live-providers` on purpose. That module imports
+ * the whole provider stack, and importing it *at all* pulls a 10 MB ledger wasm
+ * into whatever bundle references it. The landing page needs this string and
+ * nothing else, so it must be reachable without touching any of that.
+ */
+export const liveContractAddress = (): string | null => {
+  const raw = import.meta.env.VITE_CONTRACT_ADDRESS;
+  return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
+};

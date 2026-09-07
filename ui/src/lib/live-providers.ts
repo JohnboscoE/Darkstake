@@ -71,11 +71,9 @@ const majorOf = (version: string): number | null => {
 export const liveNetworkId = (): NetworkId =>
   ((import.meta.env.VITE_NETWORK_ID ?? 'preview') as NetworkId);
 
-/** The deployed market to join. Without it there is nothing to connect to. */
-export const liveContractAddress = (): string | null => {
-  const raw = import.meta.env.VITE_CONTRACT_ADDRESS;
-  return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
-};
+/** Re-exported; defined in `network.ts` so the landing page can read it
+ *  without importing this module and the 10 MB of wasm behind it. */
+export { liveContractAddress } from './network';
 
 type MidnightWindow = Window & {
   midnight?: Record<string, unknown>;

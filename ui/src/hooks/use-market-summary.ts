@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
-import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 
-import { Phase, ledger, type Ledger } from '@/lib/live-contract';
-import { liveContractAddress } from '@/lib/live-providers';
-import { indexerUrls, networkName } from '@/lib/network';
+import type { Phase, Ledger } from '@/lib/live-contract';
+import { indexerUrls, liveContractAddress, networkName } from '@/lib/network';
 
 export type MarketSummary = {
   contractAddress: string;
@@ -46,12 +43,27 @@ export function useMarketSummary(): MarketSummary | null {
 
     let cancelled = false;
     const urls = indexerUrls();
-    // The indexer's responses are decoded against the configured network, so
-    // this has to be set before the first query or the state fails to parse.
-    setNetworkId(networkName());
 
     void (async () => {
       try {
+        // Imported here rather than at module scope, and this is the whole
+        // point of the hook's shape. Decoding contract state needs the ledger
+        // wasm, which is 10 MB; a static import would put it in the landing
+        // page's critical path, so the page could not paint until a machine had
+        // downloaded and compiled all of it to render numbers that are a nice
+        // extra. Deferred, the page renders immediately and the figures arrive
+        // when they arrive.
+        const [{ indexerPublicDataProvider }, { setNetworkId }, { ledger }] = await Promise.all([
+          import('@midnight-ntwrk/midnight-js-indexer-public-data-provider'),
+          import('@midnight-ntwrk/midnight-js-network-id'),
+          import('@/lib/live-contract'),
+        ]);
+        if (cancelled) return;
+        // The indexer's responses are decoded against the configured network,
+        // so this has to happen before the first query or the state fails to
+        // parse.
+        setNetworkId(networkName());
+
         const provider = indexerPublicDataProvider(urls.http, urls.ws, WebSocket);
         const state = await provider.queryContractState(address);
         if (cancelled || state === null) return;
