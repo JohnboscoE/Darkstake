@@ -45,15 +45,27 @@ export function PublicLedger({
       <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-4">
         <Stat label="YES positions" value={fmt(ledger.yesCount)} tone="yes" />
         <Stat label="NO positions" value={fmt(ledger.noCount)} tone="no" />
+        {/*
+          Before resolution these are genuinely not set yet, so "—" is honest.
+          After it, zero is a real and final answer -- it means nothing was
+          revealed -- and showing "—  set at resolve" there states the opposite
+          of what happened.
+        */}
         <Stat
           label="Pool"
-          value={ledger.pool === 0n ? '—' : fmt(ledger.pool)}
-          hint={ledger.pool === 0n ? 'set at resolve' : undefined}
+          value={resolved ? fmt(ledger.pool) : '—'}
+          hint={resolved ? (ledger.pool === 0n ? 'nothing was revealed' : undefined) : 'set at resolve'}
         />
         <Stat
           label="Winning total"
-          value={ledger.winningStakeTotal === 0n ? '—' : fmt(ledger.winningStakeTotal)}
-          hint={ledger.winningStakeTotal === 0n ? 'set at resolve' : undefined}
+          value={resolved ? fmt(ledger.winningStakeTotal) : '—'}
+          hint={
+            resolved
+              ? ledger.winningStakeTotal === 0n
+                ? 'no revealed stake won'
+                : undefined
+              : 'set at resolve'
+          }
         />
       </div>
 
@@ -102,6 +114,16 @@ export function PublicLedger({
                         <Eye className="size-3 text-muted-foreground" />
                         {fmt(p.revealedStake)}
                       </span>
+                    ) : resolved ? (
+                      /*
+                        Still sealed, but the market is over: this stake can
+                        never be opened now. "Shielded" would read as a state it
+                        might come out of, when in fact the position is spent.
+                      */
+                      <span className="flex items-center gap-1.5 text-xs text-no">
+                        <EyeOff className="size-3" />
+                        forfeited
+                      </span>
                     ) : (
                       <span className="flex items-center gap-1.5 text-xs text-accent">
                         <EyeOff className="size-3" />
@@ -128,7 +150,17 @@ export function PublicLedger({
         </div>
       )}
 
-      {resolved && (
+      {resolved && ledger.pool === 0n && (
+        <p className="border-t border-border px-5 py-4 text-xs leading-relaxed text-no">
+          This market resolved with no stake revealed, so the pool is empty and
+          every position forfeited. That is the rule working, not a failure: a
+          stake that is never opened funds nothing and can claim nothing, which
+          is what stops losers from staying silent to avoid paying the winners.
+          Reset and reveal before resolving to see a settlement.
+        </p>
+      )}
+
+      {resolved && ledger.pool > 0n && (
         <p className="border-t border-border px-5 py-4 text-xs leading-relaxed text-muted-foreground">
           Entitlement is <span className="font-mono">stake × pool / winningStakeTotal</span>,
           computed here in the client — Compact has no division operator, so the contract publishes
