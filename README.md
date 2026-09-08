@@ -1,4 +1,4 @@
-# Darkstake
+<img src="images/darkstake-logo.png" alt="Darkstake" width="320">
 
 A prediction market on [Midnight](https://midnight.network) where **the size of
 your bet is private until the market closes**.
@@ -157,6 +157,7 @@ demonstrate the mechanism and the deployment without either.
 | `cli/` | Deploys a market to a Midnight network |
 | `wallet/` | Generates a Midnight wallet offline from a 32-byte seed |
 | `proof-server/` | Docker compose for a local proof server |
+| `images/` | Logo and brand assets |
 | `.devcontainer/` | Codespace that can build proving keys and run a prover |
 
 ## Running it
@@ -189,7 +190,9 @@ message the front end invented.
 | Block | 738714 |
 
 See [DEPLOYMENTS.md](DEPLOYMENTS.md) for the transaction hashes and a command
-that verifies all of it against the public indexer.
+that verifies all of it against the public indexer, and
+[SUBMISSION.md](SUBMISSION.md) for the write-up: what it does, what went wrong,
+and what the security review changed.
 
 The site has two modes, and both run the same compiled circuits:
 

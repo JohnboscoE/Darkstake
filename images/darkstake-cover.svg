@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Darkstake: everyone sees your call, nobody sees your size">
+  <title>Darkstake</title>
+  <defs>
+    <linearGradient id="c-peak" x1="150" y1="188" x2="150" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9b6ff"/><stop offset="1" stop-color="#a88fff"/>
+    </linearGradient>
+    <radialGradient id="c-glow" cx="0.28" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#a88fff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#a88fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#070a10"/>
+  <rect width="1200" height="630" fill="url(#c-glow)"/>
+
+  <g transform="translate(78 150) scale(2.4)">
+    <path d="M32 12 54 50H10L32 12Z" fill="#a88fff" opacity="0.10"/>
+    <path d="M10 50 32 12l22 38" fill="none" stroke="url(#c-peak)" stroke-width="4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 50h32" fill="none" stroke="#a88fff" stroke-width="3.4"
+          stroke-linecap="round" stroke-dasharray="0.4 7.9" opacity="0.7"/>
+  </g>
+
+  <text x="258" y="252" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="62" font-weight="600" letter-spacing="-1.6" fill="#e5e8ed">Darkstake</text>
+  <text x="258" y="300" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="21" font-weight="500" letter-spacing="3.4" fill="#a88fff">SHIELDED PREDICTION MARKET</text>
+
+  <text x="78" y="424" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="52" font-weight="600" letter-spacing="-1.4" fill="#e5e8ed">Everyone sees your call.</text>
+  <text x="78" y="486" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="52" font-weight="600" letter-spacing="-1.4" fill="#a88fff">Nobody sees your size.</text>
+
+  <text x="78" y="556" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="22" font-weight="400" fill="#898f9c">Commit&#8211;reveal on Midnight. Your side is public; your stake is sealed until settlement.</text>
+
+  <rect x="78" y="580" width="44" height="3" rx="1.5" fill="#a88fff" opacity="0.8"/>
+</svg>

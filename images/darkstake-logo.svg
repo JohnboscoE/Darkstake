@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 72" width="252" height="72" role="img" aria-label="Darkstake">
+  <title>Darkstake</title>
+  <defs>
+    <linearGradient id="dsl-peak" x1="36" y1="14" x2="36" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9b6ff"/>
+      <stop offset="1" stop-color="#a88fff"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(8 6) scale(0.9375)">
+    <path d="M32 12 54 50H10L32 12Z" fill="#a88fff" opacity="0.10"/>
+    <path d="M10 50 32 12l22 38" fill="none" stroke="url(#dsl-peak)" stroke-width="4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 50h32" fill="none" stroke="#a88fff" stroke-width="3.4"
+          stroke-linecap="round" stroke-dasharray="0.4 7.9" opacity="0.7"/>
+  </g>
+
+  <text x="74" y="46" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="34" font-weight="600" letter-spacing="-0.9" fill="#e5e8ed">Darkstake</text>
+</svg>

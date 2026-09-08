@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Darkstake">
+  <title>Darkstake</title>
+  <!--
+    The mark is the product in one shape: a peak whose upper edges are solid and
+    whose base dissolves into dashes.
+
+    What it says: the position is public (you can see the shape, and which way it
+    points) while the mass underneath it is not (the base is only implied). That
+    is exactly the contract: side disclosed, size sealed until reveal.
+
+    Drawn at 64 so the 1.6px strokes of the in-app version land on whole pixels
+    when scaled to 16, 32 and 48.
+  -->
+  <defs>
+    <linearGradient id="ds-peak" x1="32" y1="8" x2="32" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c9b6ff"/>
+      <stop offset="1" stop-color="#a88fff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- The sealed mass. Present, unreadable: the stake you cannot see. -->
+  <path d="M32 12 54 50H10L32 12Z" fill="#a88fff" opacity="0.10"/>
+
+  <!-- Public half: the two rising edges, unbroken. -->
+  <path d="M10 50 32 12l22 38"
+        fill="none" stroke="url(#ds-peak)" stroke-width="4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Private half: the base, withheld. -->
+  <path d="M16 50h32"
+        fill="none" stroke="#a88fff" stroke-width="3.4" stroke-linecap="round"
+        stroke-dasharray="0.4 7.9" opacity="0.7"/>
+</svg>
