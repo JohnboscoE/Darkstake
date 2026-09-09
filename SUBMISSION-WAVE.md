@@ -17,11 +17,11 @@ v2 blinds each owner tag with fresh randomness, so two positions by one key are 
 
 WHAT ELSE IS THERE
 
-The contract: five circuits, OPEN to REVEAL to RESOLVED, reveal-or-forfeit, and pro-rata settlement published as terms rather than a computed payout, because Compact has no division operator.
+The contract: five circuits, OPEN to REVEAL to RESOLVED, reveal-or-forfeit, pro-rata settlement published as terms rather than a computed payout, because Compact has no division operator.
 
-A suite that runs against the real compiled artifacts rather than a mock, since a mock cannot catch a circuit bug: 36 Vitest cases and 52 probe assertions, now including one asserting that reusing a blinding factor re-links the positions.
+36 Vitest cases and 52 probe assertions, run against the real compiled artifacts rather than a mock since a mock cannot catch a circuit bug, now including one asserting that reusing a blinding factor re-links positions.
 
-Two front ends over one set of circuits. #/app runs the compiled contract in the browser with nothing installed; #/live drives the same circuits against the deployed contract through Lace, a proof server and the indexer. The landing page reads live contract state, so a visitor who installed nothing still sees real position counts.
+Two front ends over one set of circuits: #/app runs the compiled contract in the browser with nothing installed, #/live drives the same circuits against the deployed contract through Lace, a proof server and the indexer. The landing page reads live contract state, so a visitor who installed nothing sees real position counts.
 
 Live: https://darkstake.vercel.app
 Code: https://github.com/JohnboscoE/Darkstake (see contract/SECURITY-REVIEW.md)
