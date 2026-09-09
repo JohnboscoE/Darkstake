@@ -1,37 +1,34 @@
 === UPDATES IN THIS WAVE ===
 
-This is Wave 1, so everything below is new.
+Wave 1, so this is the whole build. Two contract addresses tell the story better than a feature list:
 
-**Deliverables**
+7577ecf6fda6015f87c8efa9341da537c7fcf11a6ac0317daa904e97f8812bcf (v1, block 735676)
+0ce149b8cd281c89d4a0ec55e4f56982fc3d934770345ab438352efd30bfc508 (v2, block 738714)
+
+Both are on Midnight preview and both are still queryable from the public indexer with no wallet. The second exists because reviewing the first found a privacy bug.
+
+THE BUG
+
+Every position carried hash("pm:owner:", sk) as its owner tag, identical for every position one key opened. Splitting a large stake across several positions is the obvious way to blur its size, and that tag undid it: group the rows by owner, wait for the reveals, add the parts back together. The contract was hiding each individual stake perfectly and still leaking the total, because I had protected the value and not the linkage.
+
+The tests did not catch it, and could not have: every one of them asserted about a single position. I found it by running the contract against Midnight's own review checklists (Midnight Expert) instead. Privacy is not a property of a field; it is a property of what an observer can correlate, and a test that examines one row at a time cannot see a correlation.
+
+v2 blinds each owner tag with fresh randomness, so two positions by one key are unequal on-chain. Compact contracts are immutable, so this meant recompiling, regenerating proving keys and redeploying, which is why there are two addresses. A consequence worth stating: my own client can no longer pick out its own positions from public state either. It knows them only because it recorded the ids at commit time, which puts this UI in the position of any other observer.
+
+WHAT ELSE IS THERE
+
+The contract: five circuits, OPEN to REVEAL to RESOLVED, reveal-or-forfeit, and pro-rata settlement published as terms rather than a computed payout, because Compact has no division operator.
+
+A suite that runs against the real compiled artifacts rather than a mock, since a mock cannot catch a circuit bug: 36 Vitest cases and 52 probe assertions, now including one asserting that reusing a blinding factor re-links the positions.
+
+Two front ends over one set of circuits. #/app runs the compiled contract in the browser with nothing installed; #/live drives the same circuits against the deployed contract through Lace, a proof server and the indexer. The landing page reads live contract state, so a visitor who installed nothing still sees real position counts.
+
 Live: https://darkstake.vercel.app
-Code: https://github.com/JohnboscoE/Darkstake
-Contract: 0ce149b8cd281c89d4a0ec55e4f56982fc3d934770345ab438352efd30bfc508 on Midnight preview, block 738714
+Code: https://github.com/JohnboscoE/Darkstake (see contract/SECURITY-REVIEW.md)
 
-Anyone can verify that deployment against the public Midnight indexer with no wallet and no trust in this repo; DEPLOYMENTS.md has the one-line curl and every transaction hash.
+WHAT I KNOW IS MISSING
 
-**What shipped**
-
-1. The Compact contract. A commit-reveal prediction market: five circuits, phases OPEN -> REVEAL -> RESOLVED, reveal-or-forfeit, and pro-rata settlement published as terms rather than a computed payout, since Compact has no division operator.
-
-2. Deployed and independently verifiable on Midnight preview. Proving keys come from a pinned CI toolchain; the deploy produced real proofs and paid fees in dust.
-
-3. An adversarial test suite against the real compiled artifacts, not a mock: 36 Vitest cases and 52 probe assertions covering forged stakes and salts, non-owner claims, double-claims and phase gating.
-
-4. Two front-end modes over one set of circuits. #/app runs the compiled contract in the browser with nothing installed; #/live drives the same circuits against the deployed contract through Lace, a proof server and the indexer. So the demo cannot drift from the deployment.
-
-5. The landing page reads live contract state straight from the public indexer, so a visitor who has installed nothing still sees real on-chain position counts.
-
-**The most substantive change: a privacy bug found by review**
-
-I reviewed the contract against Midnight's own checklists (Midnight Expert). It found a real bug.
-
-Every position carried hash("pm:owner:", sk) as its owner tag, identical for every position one key opened. Splitting a large stake across several positions is the obvious way to blur its size; that tag undid it. Group the rows by owner, wait for the reveals, add the parts back together. The contract hid each individual stake perfectly and still leaked the total, because I had protected the value and not the linkage.
-
-v2 blinds each owner tag with fresh randomness, so two positions by one key are unequal on-chain. Contract logic is immutable, so this cost a recompile, new proving keys and a redeploy to a new address. Full writeup: contract/SECURITY-REVIEW.md in the repo.
-
-**Known gaps, stated plainly**
-
-Entitlements are recorded, not paid: claimEntitlement writes who is owed what on what terms, and settlement with real custody is Wave 2. Live mode's wallet path is written and typechecked but has not yet been exercised end to end, because proving on my 2011 CPU is impractical; the in-browser mode exists so the mechanism is demonstrable regardless.
+Entitlements are recorded, not paid: claimEntitlement writes who is owed what on what terms, and custody is Wave 2. The browser wallet path is written and typechecked but not yet exercised end to end, because proving on a 2011 CPU is impractical; the in-browser mode exists so the mechanism is demonstrable regardless.
 
 
 === MILESTONE: 2ND WAVE ===
